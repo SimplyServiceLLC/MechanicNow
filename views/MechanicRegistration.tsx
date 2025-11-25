@@ -1,4 +1,6 @@
 
+
+
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../App';
@@ -355,7 +357,7 @@ export const MechanicRegistration: React.FC = () => {
 
                          <label className="flex items-start gap-3 cursor-pointer">
                             <input type="checkbox" className="mt-1" checked={agreedToTerms} onChange={e => setAgreedToTerms(e.target.checked)} />
-                            <span className="text-xs text-slate-600">I accept the <a href="#" className="text-blue-600 underline">MechanicNow Partner Agreement</a> and Liability Waiver.</span>
+                            <span className="text-xs text-slate-600">I accept the <a href="#/terms" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">MechanicNow Partner Agreement</a> and Liability Waiver.</span>
                         </label>
                     </div>
 

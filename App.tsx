@@ -10,6 +10,7 @@ import { Profile } from './views/Profile';
 import { Tracking } from './views/Tracking';
 import { MechanicDashboard } from './views/MechanicDashboard';
 import { MechanicRegistration } from './views/MechanicRegistration';
+import { Terms } from './views/Terms';
 import { UserProfile, Vehicle, ServiceRecord } from './types';
 import { api } from './services/api';
 
@@ -393,6 +394,7 @@ const App: React.FC = () => {
               <Route path="/mechanics" element={<MechanicList />} />
               <Route path="/tracking" element={<Tracking />} />
               <Route path="/mechanic-dashboard" element={<MechanicDashboard />} />
+              <Route path="/terms" element={<Terms />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </Layout>

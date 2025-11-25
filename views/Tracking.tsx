@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useApp } from '../App';
@@ -18,7 +19,7 @@ const LiveMap = ({ mechanicPos, customerPos, rotation }: { mechanicPos: {x: numb
       const map = (window as any).L.map(mapRef.current, {
         zoomControl: false,
         attributionControl: false
-      }).setView([37.7749, -122.4194], 15);
+      }).setView([36.8508, -76.2859], 15);
       
       (window as any).L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
       leafletMap.current = map;

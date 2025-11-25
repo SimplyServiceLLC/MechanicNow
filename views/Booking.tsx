@@ -1,9 +1,12 @@
 
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+
+
+
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useNavigate, useLocation as useRouteLocation } from 'react-router-dom';
 import { useApp } from '../App';
-import { Search, MapPin, Calendar, Wrench, Car, ChevronRight, MessageSquare, Sparkles, ArrowLeft, Loader2, X, Clock, Mic, Stethoscope, Navigation, Fuel, Battery, Lock, Key, AlertTriangle, Droplet, CreditCard, Banknote, CheckCircle, Wallet, Star, ShieldCheck } from 'lucide-react';
+import { Search, MapPin, Calendar, Wrench, Car, ChevronRight, MessageSquare, Sparkles, ArrowLeft, Loader2, X, Clock, Mic, Stethoscope, Navigation, Fuel, Battery, Lock, Key, AlertTriangle, Droplet, CreditCard, Banknote, CheckCircle, Wallet, Star, ShieldCheck, Crosshair } from 'lucide-react';
 import { diagnoseCarIssue, chatWithMechanicAI } from '../services/geminiService';
 import { Vehicle, ServiceItem, ServiceType, GeoLocation, PaymentMethod, PriceBreakdown, Mechanic } from '../types';
 import { api } from '../services/api';
@@ -180,73 +183,132 @@ const AddressAutocomplete = ({ value, onChange, onSelect }: { value: string, onC
 };
 
 // Interactive Mechanics Map (Leaflet)
-const AvailableMechanicsMap = ({ active, center }: { active: boolean, center?: GeoLocation }) => {
+const AvailableMechanicsMap = ({ 
+  active, 
+  center, 
+  mechanics = [],
+  onMapMoveEnd,
+  isInteracting
+}: { 
+  active: boolean, 
+  center?: GeoLocation,
+  mechanics?: Mechanic[],
+  onMapMoveEnd?: (lat: number, lng: number) => void,
+  isInteracting?: (isMoving: boolean) => void
+}) => {
   const mapRef = useRef<HTMLDivElement>(null);
   const leafletMap = useRef<any>(null);
   const markers = useRef<any[]>([]);
+  const isInternalMove = useRef(false);
 
+  // Initialize Map
   useEffect(() => {
     if (!mapRef.current) return;
-    if (!(window as any).L) return; // Leaflet not available
+    if (!(window as any).L) return;
 
     if (!leafletMap.current) {
       const L = (window as any).L;
+      // Default to Hampton Roads, Virginia coordinates
       const map = L.map(mapRef.current, {
           zoomControl: false,
-          scrollWheelZoom: false,
+          scrollWheelZoom: true,
+          dragging: true,
           attributionControl: false 
-      }).setView([37.7749, -122.4194], 13);
+      }).setView([36.8508, -76.2859], 10);
       
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
       leafletMap.current = map;
-    }
 
+      // Event Listeners for Drag-to-Pin
+      map.on('movestart', () => {
+          if (isInteracting) isInteracting(true);
+      });
+      
+      map.on('moveend', () => {
+          if (isInteracting) isInteracting(false);
+          // Only trigger parent update if user moved map (not programmatic flyTo)
+          if (!isInternalMove.current && onMapMoveEnd) {
+              const c = map.getCenter();
+              onMapMoveEnd(c.lat, c.lng);
+          }
+          isInternalMove.current = false;
+      });
+    }
+  }, []); // Empty dependency array for init only
+
+  // Update View when "center" prop changes explicitly (e.g. from Autocomplete selection or "Locate Me")
+  // We use a flag to prevent the 'moveend' event from triggering a reverse geocode loop
+  useEffect(() => {
     if (center && leafletMap.current) {
-        leafletMap.current.setView([center.lat, center.lng], 14);
-        
-        // Add User Marker
+        const currentCenter = leafletMap.current.getCenter();
+        const dist = Math.sqrt(Math.pow(currentCenter.lat - center.lat, 2) + Math.pow(currentCenter.lng - center.lng, 2));
+
+        // If distance is significant, fly there
+        if (dist > 0.0001) {
+             isInternalMove.current = true;
+             leafletMap.current.flyTo([center.lat, center.lng], 15, { duration: 1.5 });
+        }
+    }
+  }, [center]);
+
+  // Render Mechanics Markers (Ghost or Real)
+  useEffect(() => {
+    if (leafletMap.current && active) {
         const L = (window as any).L;
         
         // Clear old markers
         markers.current.forEach(m => leafletMap.current.removeLayer(m));
         markers.current = [];
 
-        // Add user marker
-        const userIcon = L.divIcon({
-            className: 'custom-div-icon',
-            html: `<div style="background-color: #3b82f6; width: 14px; height: 14px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);"></div>`,
-            iconSize: [14, 14]
-        });
-        const m = L.marker([center.lat, center.lng], { icon: userIcon }).addTo(leafletMap.current);
-        markers.current.push(m);
-
-        // Add Fake Mechanics nearby
-        for (let i = 0; i < 3; i++) {
-             const offsetLat = (Math.random() - 0.5) * 0.02;
-             const offsetLng = (Math.random() - 0.5) * 0.02;
-             const mechIcon = L.divIcon({
-                className: 'custom-div-icon',
-                html: `<div style="font-size: 16px;">🚗</div>`,
-                iconSize: [20, 20]
-             });
-             const mm = L.marker([center.lat + offsetLat, center.lng + offsetLng], { icon: mechIcon }).addTo(leafletMap.current);
-             markers.current.push(mm);
+        // Combine real mechanics with generated ghosts for the "Uber" feel
+        const mechsToRender = [...mechanics];
+        
+        // Always generate some ghosts around the center if list is sparse
+        // This ensures the map feels "alive" nationally
+        if (mechsToRender.length < 5 && leafletMap.current) {
+            const mapCenter = leafletMap.current.getCenter();
+             for (let i = 0; i < 5; i++) {
+                 const offsetLat = (Math.random() - 0.5) * 0.03;
+                 const offsetLng = (Math.random() - 0.5) * 0.03;
+                 mechsToRender.push({
+                     id: `ghost_${i}`,
+                     lat: mapCenter.lat + offsetLat,
+                     lng: mapCenter.lng + offsetLng
+                 } as any);
+             }
         }
-    }
 
-  }, [center]);
+        mechsToRender.forEach((mech: any) => {
+             if (mech.lat && mech.lng) {
+                 const mechIcon = L.divIcon({
+                    className: 'custom-div-icon',
+                    html: `
+                    <div class="relative transition-all duration-500">
+                        <div class="absolute -top-3 -left-3 w-8 h-8 bg-blue-500/20 rounded-full animate-ping"></div>
+                        <div class="relative z-10 w-8 h-8 bg-white rounded-full border-2 border-slate-900 shadow-md flex items-center justify-center text-sm transform -rotate-45 hover:scale-110 hover:bg-slate-50 transition-transform">
+                            🚗
+                        </div>
+                    </div>`,
+                    iconSize: [32, 32]
+                 });
+                 const mm = L.marker([mech.lat, mech.lng], { icon: mechIcon }).addTo(leafletMap.current);
+                 markers.current.push(mm);
+             }
+        });
+    }
+  }, [mechanics, active, center]); // Re-render markers when mechanics or map active state changes
 
   return (
     <div className={`w-full h-full bg-slate-100 relative overflow-hidden transition-opacity duration-1000 ${active ? 'opacity-100' : 'opacity-50 grayscale'}`}>
-      <div ref={mapRef} className="w-full h-full" />
+      <div ref={mapRef} className="w-full h-full z-0" />
       
       {active && (
-        <div className="absolute bottom-4 left-4 z-[400] bg-white/90 backdrop-blur px-3 py-1.5 rounded-full shadow-sm text-xs font-bold text-slate-700 flex items-center gap-2">
+        <div className="absolute bottom-4 left-4 z-[400] bg-white/90 backdrop-blur px-3 py-1.5 rounded-full shadow-sm text-xs font-bold text-slate-700 flex items-center gap-2 border border-slate-200">
             <span className="relative flex h-2 w-2">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
             </span>
-            Local mechanics online
+            {mechanics.length > 0 ? `${mechanics.length} mechanics nearby` : 'Locating professionals...'}
         </div>
       )}
     </div>
@@ -461,7 +523,7 @@ export const BookingConfirmationView = ({ mechanic, vehicle, services, date, tim
                                 onChange={(e) => setAgreedToTerms(e.target.checked)}
                             />
                             <span className="text-xs text-slate-700">
-                                I agree to the <a href="#" className="font-bold text-blue-600 hover:underline">Terms of Service</a> and acknowledge that I have read the <a href="#" className="font-bold text-blue-600 hover:underline">Liability Waiver</a>. I understand that MechanicNow connects me with independent contractors.
+                                I agree to the <a href="#/terms" target="_blank" rel="noopener noreferrer" className="font-bold text-blue-600 hover:underline">Terms of Service</a> and acknowledge that I have read the <a href="#/terms" target="_blank" rel="noopener noreferrer" className="font-bold text-blue-600 hover:underline">Liability Waiver</a>. I understand that MechanicNow connects me with independent contractors.
                             </span>
                         </label>
                     </div>
@@ -517,6 +579,8 @@ export const Booking: React.FC = () => {
   const [location, setLocation] = useState('');
   const [geoData, setGeoData] = useState<GeoLocation | undefined>(undefined);
   const [gettingLocation, setGettingLocation] = useState(false);
+  const [isMapMoving, setIsMapMoving] = useState(false);
+  const [nearbyMechanics, setNearbyMechanics] = useState<Mechanic[]>([]);
 
   // Time Slot State
   const [dates, setDates] = useState<Date[]>([]);
@@ -531,6 +595,9 @@ export const Booking: React.FC = () => {
   const [currentMessage, setCurrentMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  
+  // Debounce ref for reverse geocoding
+  const debounceRef = useRef<any>(null);
 
   // Initialize
   useEffect(() => {
@@ -561,7 +628,7 @@ export const Booking: React.FC = () => {
     }
     if (locationState?.prefilledLocation) {
       setLocation(locationState.prefilledLocation);
-      if (!geoData) setGeoData({ lat: 37.77, lng: -122.41 }); 
+      if (!geoData) setGeoData({ lat: 36.8508, lng: -76.2859 }); // Hampton Roads default
     }
   }, [user, locationState]);
 
@@ -573,6 +640,13 @@ export const Booking: React.FC = () => {
           setAvailableModels([]);
       }
   }, [vehicle.make]);
+
+  // Fetch mechanics when location changes
+  useEffect(() => {
+      if (step === 3 && geoData) {
+          api.mechanic.getNearbyMechanics(geoData.lat, geoData.lng).then(setNearbyMechanics);
+      }
+  }, [step, geoData]);
 
   // Helper for local date string (YYYY-MM-DD)
   const getLocalDateString = (date: Date) => {
@@ -657,40 +731,57 @@ export const Booking: React.FC = () => {
     recognition.start();
   };
 
+  const performReverseGeocode = async (latitude: number, longitude: number) => {
+      try {
+        const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
+        const data = await response.json();
+        if (data && data.display_name) {
+            const address = data.address;
+            const simpleAddress = `${address.house_number || ''} ${address.road || ''}, ${address.city || address.town || ''}, ${address.state || ''}`;
+            const formatted = simpleAddress.trim().replace(/^,/, '');
+            setLocation(formatted);
+            setGeoData({ lat: latitude, lng: longitude, address: formatted });
+        } else {
+            setLocation(`${latitude.toFixed(4)}, ${longitude.toFixed(4)}`);
+            setGeoData({ lat: latitude, lng: longitude });
+        }
+      } catch (e) {
+          console.warn("Reverse geocode failed", e);
+      }
+  };
+
+  // Called when user drags map (center point)
+  const handleMapMoveEnd = (lat: number, lng: number) => {
+      // Clear previous timer to debounce API calls
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      
+      // Update data immediately for smoothness but wait to reverse geocode
+      setGeoData({ lat, lng, address: "Locating..." });
+      
+      debounceRef.current = setTimeout(() => {
+          performReverseGeocode(lat, lng);
+          // Also fetch new mechanics for this area
+          api.mechanic.getNearbyMechanics(lat, lng).then(setNearbyMechanics);
+      }, 800);
+  };
+
   const handleUseCurrentLocation = () => {
     setGettingLocation(true);
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         async (position) => {
-          try {
             const { latitude, longitude } = position.coords;
             setGeoData({ lat: latitude, lng: longitude });
-            
-            // Attempt simple reverse geocoding
-            const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
-            const data = await response.json();
-            if (data && data.display_name) {
-                const address = data.address;
-                const simpleAddress = `${address.house_number || ''} ${address.road || ''}, ${address.city || address.town || ''}, ${address.state || ''}`;
-                const formatted = simpleAddress.trim().replace(/^,/, '');
-                setLocation(formatted);
-                setGeoData({ lat: latitude, lng: longitude, address: formatted });
-            } else {
-                setLocation(`${latitude.toFixed(4)}, ${longitude.toFixed(4)}`);
-            }
-          } catch (e) {
-            console.warn("Reverse geocode failed", e);
-            setLocation("Current Location (GPS)");
-            setGeoData({ lat: position.coords.latitude, lng: position.coords.longitude });
-          } finally {
+            performReverseGeocode(latitude, longitude);
             setGettingLocation(false);
-          }
+            api.mechanic.getNearbyMechanics(latitude, longitude).then(setNearbyMechanics);
         }, 
         (error) => {
             console.error(error);
-            // Don't notify on initial load failure to avoid annoyance
             if (step === 3) notify("Location Error", "Unable to retrieve location. Please enter manually.");
             setGettingLocation(false);
+            // Default to Hampton Roads on error
+            setGeoData({ lat: 36.8508, lng: -76.2859 }); 
         },
         { enableHighAccuracy: true }
       );
@@ -699,7 +790,17 @@ export const Booking: React.FC = () => {
     }
   };
 
-  const times = ['09:00 AM', '10:00 AM', '11:00 AM', '01:00 PM', '02:00 PM', '03:00 PM', '04:00 PM'];
+  // Generate 24-hour hourly slots (00:00 to 23:00)
+  const times = useMemo(() => {
+      const slots = [];
+      for (let i = 0; i < 24; i++) {
+        const hour = i === 0 ? 12 : (i > 12 ? i - 12 : i);
+        const ampm = i < 12 ? 'AM' : 'PM';
+        // Add hourly slot
+        slots.push(`${hour}:00 ${ampm}`);
+      }
+      return slots;
+  }, []);
 
   return (
     <div className="relative min-h-screen pt-20 bg-gray-100 flex flex-col md:flex-row overflow-hidden">
@@ -951,6 +1052,7 @@ export const Booking: React.FC = () => {
             {step === 3 && (
                 <div className="animate-fade-in">
                   <h2 className="text-2xl font-bold mb-6 text-slate-800">Where should we come?</h2>
+                  <p className="text-slate-500 text-sm mb-4">Drag the map to pinpoint your location.</p>
                   
                   {/* Address Auto Complete */}
                   <div className="mb-3">
@@ -964,17 +1066,38 @@ export const Booking: React.FC = () => {
                      />
                   </div>
                   
-                  <button 
-                    onClick={handleUseCurrentLocation}
-                    disabled={gettingLocation}
-                    className="text-sm text-blue-600 font-medium flex items-center gap-2 mb-6 hover:text-blue-700 disabled:opacity-50"
-                  >
-                    {gettingLocation ? <Loader2 className="animate-spin" size={16} /> : <MapPin size={16} />}
-                    {gettingLocation ? "Finding location..." : "Use my current location"}
-                  </button>
+                  <div className="h-80 rounded-xl bg-slate-100 border border-slate-200 relative mb-6 overflow-hidden shadow-inner group">
+                      <AvailableMechanicsMap 
+                        active={!!location || !!geoData} 
+                        center={geoData} 
+                        mechanics={nearbyMechanics}
+                        onMapMoveEnd={handleMapMoveEnd}
+                        isInteracting={setIsMapMoving}
+                      />
+                      
+                      {/* Fixed Center Pin UI */}
+                      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[401] pointer-events-none -mt-4 transition-transform duration-200"
+                           style={{ transform: isMapMoving ? 'translate(-50%, -60%) scale(1.1)' : 'translate(-50%, -50%) scale(1)' }}>
+                           <div className="relative">
+                               <MapPin size={32} className="text-slate-900 fill-slate-900 drop-shadow-md" />
+                               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-1.5 h-1.5 bg-white rounded-full mt-[-6px]"></div>
+                           </div>
+                           <div className="w-1.5 h-1.5 bg-black/30 rounded-full blur-[2px] mx-auto mt-[-2px]"></div>
+                      </div>
+                      
+                      {isMapMoving && (
+                          <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-xs px-3 py-1.5 rounded-full shadow-lg z-[402] font-bold">
+                              Release to set location
+                          </div>
+                      )}
 
-                  <div className="h-64 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center mb-6 overflow-hidden relative shadow-inner">
-                      <AvailableMechanicsMap active={!!location || !!geoData} center={geoData} />
+                      <button 
+                        onClick={handleUseCurrentLocation}
+                        className="absolute bottom-4 right-4 bg-white p-3 rounded-full shadow-lg hover:bg-gray-50 z-[402] border border-gray-100"
+                        title="Locate Me"
+                      >
+                         {gettingLocation ? <Loader2 className="animate-spin text-blue-600" size={20}/> : <Crosshair className="text-blue-600" size={20}/>}
+                      </button>
                   </div>
 
                   <div className="flex gap-3 mt-6">
@@ -995,7 +1118,11 @@ export const Booking: React.FC = () => {
             {step === 4 && (
                 <div className="animate-fade-in">
                   <h2 className="text-2xl font-bold mb-6 text-slate-800">When works for you?</h2>
-                  
+                  <div className="flex items-center gap-2 mb-4 bg-green-50 p-3 rounded-xl border border-green-100 text-green-700 text-sm font-medium">
+                    <CheckCircle size={16} />
+                    <span>24/7 Booking Available</span>
+                  </div>
+
                   <div className="mb-6">
                       <h3 className="text-sm font-bold text-slate-500 mb-3 uppercase tracking-wide">Date</h3>
                       <div className="flex gap-3 overflow-x-auto pb-2">
@@ -1018,16 +1145,18 @@ export const Booking: React.FC = () => {
 
                   <div className="mb-6">
                       <h3 className="text-sm font-bold text-slate-500 mb-3 uppercase tracking-wide">Time</h3>
-                      <div className="grid grid-cols-3 gap-2">
-                          {times.map(time => (
-                              <button 
-                                key={time}
-                                onClick={() => setSelectedTime(time)}
-                                className={`p-3 rounded-xl border text-sm font-medium transition-all ${selectedTime === time ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-600 hover:border-blue-300'}`}
-                              >
-                                  {time}
-                              </button>
-                          ))}
+                      <div className="h-40 overflow-y-auto pr-2">
+                          <div className="grid grid-cols-3 gap-2">
+                              {times.map(time => (
+                                  <button 
+                                    key={time}
+                                    onClick={() => setSelectedTime(time)}
+                                    className={`p-3 rounded-xl border text-sm font-medium transition-all ${selectedTime === time ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-600 hover:border-blue-300'}`}
+                                  >
+                                      {time}
+                                  </button>
+                              ))}
+                          </div>
                       </div>
                   </div>
 

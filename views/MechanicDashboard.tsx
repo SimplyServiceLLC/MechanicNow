@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useApp } from '../App';
-import { MapPin, DollarSign, Clock, User, ArrowRight, Shield, Settings, Power, Navigation, Phone, Bell, MessageSquare, X, Send, CheckCircle, PenTool, Sparkles, Loader2, FileText, Wrench, Mic, TrendingUp, RefreshCw, Calendar, ChevronRight, Timer, RotateCcw, Package, Wallet, CreditCard, Banknote, Smartphone, Filter, Map, Link2 } from 'lucide-react';
+import { MapPin, DollarSign, Clock, User, ArrowRight, Shield, Settings, Power, Navigation, Phone, Bell, MessageSquare, X, Send, CheckCircle, PenTool, Sparkles, Loader2, FileText, Wrench, Mic, TrendingUp, RefreshCw, Calendar, ChevronRight, Timer, RotateCcw, Package, Wallet, CreditCard, Banknote, Smartphone, Filter, Map, Link2, Save } from 'lucide-react';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { JobRequest, JobCompletionDetails, AiDiagnosisResult } from '../types';
 import { diagnoseCarIssue } from '../services/geminiService';
@@ -15,10 +15,11 @@ interface DashboardChatMessage {
   timestamp: number;
 }
 
-const DashboardMap: React.FC<{ requests: JobRequest[], activeId: string | null, onSelect: (id: string) => void }> = ({ requests, activeId, onSelect }) => {
+const DashboardMap: React.FC<{ requests: JobRequest[], activeId: string | null, onSelect: (id: string) => void, mechanicLocation?: {lat: number, lng: number} | null }> = ({ requests, activeId, onSelect, mechanicLocation }) => {
   const mapRef = useRef<HTMLDivElement>(null);
   const leafletMap = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
+  const userMarkerRef = useRef<any>(null);
 
   useEffect(() => {
     if (!mapRef.current) return;
@@ -28,7 +29,7 @@ const DashboardMap: React.FC<{ requests: JobRequest[], activeId: string | null, 
       // Initialize map
       const map = (window as any).L.map(mapRef.current, {
           zoomControl: false
-      }).setView([37.7749, -122.4194], 12);
+      }).setView([36.8508, -76.2859], 10);
       
       (window as any).L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; OpenStreetMap contributors'
@@ -39,6 +40,31 @@ const DashboardMap: React.FC<{ requests: JobRequest[], activeId: string | null, 
 
     const L = (window as any).L;
 
+    // --- Update Mechanic Marker (Blue Dot) ---
+    if (mechanicLocation) {
+        const pulseIcon = L.divIcon({
+            className: 'custom-div-icon',
+            html: `<div class="relative w-4 h-4">
+                     <div class="absolute w-full h-full bg-blue-500 rounded-full animate-ping opacity-75"></div>
+                     <div class="absolute w-full h-full bg-blue-600 border-2 border-white rounded-full shadow-md"></div>
+                   </div>`,
+            iconSize: [16, 16],
+            iconAnchor: [8, 8]
+        });
+
+        if (!userMarkerRef.current) {
+            userMarkerRef.current = L.marker([mechanicLocation.lat, mechanicLocation.lng], { 
+                icon: pulseIcon,
+                zIndexOffset: 2000 
+            }).addTo(leafletMap.current);
+            // Center initially on mechanic
+            leafletMap.current.setView([mechanicLocation.lat, mechanicLocation.lng], 13);
+        } else {
+            userMarkerRef.current.setLatLng([mechanicLocation.lat, mechanicLocation.lng]);
+        }
+    }
+
+    // --- Update Job Markers ---
     // Clear existing markers
     markersRef.current.forEach(m => leafletMap.current.removeLayer(m));
     markersRef.current = [];
@@ -94,7 +120,7 @@ const DashboardMap: React.FC<{ requests: JobRequest[], activeId: string | null, 
         markersRef.current.push(marker);
     });
 
-  }, [requests, activeId, onSelect]);
+  }, [requests, activeId, onSelect, mechanicLocation]);
 
   return <div ref={mapRef} className="w-full h-full bg-slate-100 relative z-0" />;
 };
@@ -350,7 +376,7 @@ const CompletionModal = ({ job, onClose, onProcessPayment }: { job: JobRequest, 
 
                 {/* Earnings Summary Box */}
                 <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-2">
-                    <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2 mb-2">
+                    <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
                         <Wallet size={16}/> Earnings Breakdown
                     </h3>
                     <div className="flex justify-between text-sm text-slate-500">
@@ -477,6 +503,11 @@ export const MechanicDashboard: React.FC = () => {
   const [isStripeConnected, setIsStripeConnected] = useState(false);
   const [requests, setRequests] = useState<JobRequest[]>([]);
   const [earningsStats, setEarningsStats] = useState({ today: 0, week: 0, month: 0 });
+  const [mechanicLocation, setMechanicLocation] = useState<{lat: number, lng: number} | null>(null);
+  
+  // Mechanic Profile Edit State
+  const [profileBio, setProfileBio] = useState('');
+  const [profileExp, setProfileExp] = useState(1);
 
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [chatJob, setChatJob] = useState<JobRequest | null>(null);
@@ -486,6 +517,16 @@ export const MechanicDashboard: React.FC = () => {
   const [isOnboardingStripe, setIsOnboardingStripe] = useState(false);
   
   const prevRequestsRef = useRef<JobRequest[]>([]);
+
+  // Get Mechanic Location on mount
+  useEffect(() => {
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+            (pos) => setMechanicLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+            (err) => console.log("Location access denied", err)
+        );
+    }
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -522,6 +563,8 @@ export const MechanicDashboard: React.FC = () => {
         if (navigator.geolocation) {
             watchId = navigator.geolocation.watchPosition(
                 (pos) => {
+                    const newLoc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+                    setMechanicLocation(newLoc);
                     // Update location in DB for tracking
                     api.mechanic.updateLocation(activeJob.id, pos.coords.latitude, pos.coords.longitude);
                 },
@@ -546,6 +589,11 @@ export const MechanicDashboard: React.FC = () => {
       const newState = !isOnline;
       setIsOnline(newState);
       await api.mechanic.updateStatus(newState);
+  };
+  
+  const handleSaveProfile = () => {
+      notify("Profile Saved", "Your mechanic profile has been updated.");
+      // In real app: api.mechanic.updateProfile({ bio: profileBio, yearsExperience: profileExp });
   };
 
   const handleAcceptJob = async (id: string, e?: React.MouseEvent) => {
@@ -675,6 +723,9 @@ export const MechanicDashboard: React.FC = () => {
                 <button onClick={() => setActiveTab('earnings')} className={`w-full p-3 rounded-xl flex items-center gap-3 ${activeTab === 'earnings' ? 'bg-green-50 text-green-600' : 'text-slate-500 hover:bg-gray-50'}`}>
                     <DollarSign size={24} /><span className="hidden md:block font-medium">Earnings</span>
                 </button>
+                <button onClick={() => setActiveTab('profile')} className={`w-full p-3 rounded-xl flex items-center gap-3 ${activeTab === 'profile' ? 'bg-slate-100 text-slate-800' : 'text-slate-500 hover:bg-gray-50'}`}>
+                    <User size={24} /><span className="hidden md:block font-medium">Profile</span>
+                </button>
             </div>
             <div className="p-4 border-t border-slate-100 mt-auto">
                  <div className="hidden md:block bg-slate-900 rounded-xl p-4 mb-4 shadow-lg">
@@ -750,7 +801,12 @@ export const MechanicDashboard: React.FC = () => {
                         </div>
                     </div>
                     <div className="flex-1 bg-gray-100 relative flex flex-col">
-                        <DashboardMap requests={visibleRequests} activeId={selectedJobId} onSelect={setSelectedJobId} />
+                        <DashboardMap 
+                            requests={visibleRequests} 
+                            activeId={selectedJobId} 
+                            onSelect={setSelectedJobId} 
+                            mechanicLocation={mechanicLocation}
+                        />
                         {activeJob && !showCompletionModal && (
                             <div className="absolute bottom-6 left-6 right-6 md:left-auto md:right-6 md:w-96 bg-white rounded-3xl shadow-2xl p-6 animate-slide-up border border-slate-100 z-10">
                                 <h2 className="text-xl font-bold mb-4">{activeJob.customerName}</h2>
@@ -785,6 +841,7 @@ export const MechanicDashboard: React.FC = () => {
                         requests={requests.filter(r => ['NEW', 'ACCEPTED', 'ARRIVED', 'IN_PROGRESS'].includes(r.status))} 
                         activeId={selectedJobId} 
                         onSelect={setSelectedJobId} 
+                        mechanicLocation={mechanicLocation}
                     />
 
                     {/* Floating Card for Selected Job */}
@@ -811,6 +868,75 @@ export const MechanicDashboard: React.FC = () => {
                         </div>
                     )}
                 </div>
+            )}
+            
+            {activeTab === 'profile' && (
+                 <div className="p-8 max-w-4xl mx-auto w-full overflow-y-auto">
+                    <h2 className="text-3xl font-bold text-slate-900 mb-2">Mechanic Profile</h2>
+                    <p className="text-slate-500 mb-8">Manage your public presence and settings.</p>
+
+                    <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-8 mb-6">
+                        <div className="flex items-center gap-6 mb-8">
+                            <img src={user.avatar} className="w-24 h-24 rounded-full border-4 border-slate-100" />
+                            <div>
+                                <h3 className="text-2xl font-bold text-slate-900">{user.name}</h3>
+                                <div className="flex items-center gap-2 mt-2">
+                                    <span className="bg-blue-100 text-blue-700 text-xs font-bold px-2 py-1 rounded">Verified Mechanic</span>
+                                    <span className="bg-green-100 text-green-700 text-xs font-bold px-2 py-1 rounded">24/7 Available</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="space-y-6">
+                            <div>
+                                <label className="block text-sm font-bold text-slate-700 mb-2">Public Bio</label>
+                                <textarea 
+                                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl min-h-[100px] focus:ring-2 focus:ring-blue-500 outline-none"
+                                    placeholder="Tell customers about your experience..."
+                                    value={profileBio}
+                                    onChange={(e) => setProfileBio(e.target.value)}
+                                />
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <label className="block text-sm font-bold text-slate-700 mb-2">Years of Experience</label>
+                                    <input 
+                                        type="number" 
+                                        className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl" 
+                                        value={profileExp}
+                                        onChange={(e) => setProfileExp(parseInt(e.target.value) || 0)}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-bold text-slate-700 mb-2">Hourly Rate (Estimate)</label>
+                                    <input 
+                                        type="text" 
+                                        className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl" 
+                                        placeholder="$85/hr"
+                                        disabled
+                                    />
+                                    <p className="text-xs text-slate-400 mt-1">Rates are set by platform standards.</p>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-bold text-slate-700 mb-2">Specialties</label>
+                                <div className="flex flex-wrap gap-2">
+                                    {['Brakes', 'Engine', 'Diagnostics', 'Oil Change'].map(s => (
+                                        <span key={s} className="bg-slate-100 text-slate-600 px-3 py-1 rounded-full text-sm font-medium">{s}</span>
+                                    ))}
+                                    <button className="text-blue-600 text-sm font-bold hover:underline ml-2">+ Edit Skills</button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div className="mt-8 pt-8 border-t border-slate-100 flex justify-end">
+                            <button onClick={handleSaveProfile} className="bg-slate-900 text-white px-6 py-3 rounded-xl font-bold hover:bg-slate-800 flex items-center gap-2">
+                                <Save size={18}/> Save Changes
+                            </button>
+                        </div>
+                    </div>
+                 </div>
             )}
 
             {activeTab === 'earnings' && (

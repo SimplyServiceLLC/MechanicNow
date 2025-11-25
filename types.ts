@@ -102,8 +102,12 @@ export interface UserProfile {
   name: string;
   email: string;
   avatar: string;
+  phone?: string;
+  address?: string;
+  bio?: string;
   vehicles: Vehicle[];
   history: ServiceRecord[];
+  isMechanic?: boolean;
 }
 
 export interface JobCompletionDetails {
@@ -138,6 +142,7 @@ export interface PriceBreakdown {
 
 export interface JobRequest {
   id: string;
+  customerId?: string; // Added for security rules
   customerName: string;
   vehicle: string;
   issue: string;
