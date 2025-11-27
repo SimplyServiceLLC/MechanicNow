@@ -1,12 +1,14 @@
 
-
-
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../App';
 import { Wrench, User, Mail, Lock, Phone as PhoneIcon, Upload, CheckCircle, ChevronRight, ArrowLeft, ShieldCheck, MapPin, Briefcase, Award, Loader2, FileText, AlertTriangle } from 'lucide-react';
 import { api } from '../services/api';
 import { MechanicRegistrationData } from '../types';
+
+// Extended Vehicle Data (Make -> Models) to show capability
+// For brevity, we just use a sample, but ideally shared with Booking
+const VEHICLE_DATA_KEYS = ["Toyota", "Honda", "Ford", "Chevrolet", "Nissan", "BMW", "Mercedes-Benz", "Audi", "Volkswagen"];
 
 export const MechanicRegistration: React.FC = () => {
   const navigate = useNavigate();
@@ -35,6 +37,8 @@ export const MechanicRegistration: React.FC = () => {
     insurance: false,
     ase: false
   });
+  
+  const [uploadingDoc, setUploadingDoc] = useState<string | null>(null);
 
   const commonSpecialties = ["Brakes", "Diagnostics", "Engine Repair", "Electrical", "Suspension", "Oil & Fluids", "HVAC", "Hybrid/EV"];
   const commonCerts = ["ASE Master Technician", "ASE A1 Engine Repair", "ASE A5 Brakes", "Hybrid Certified", "Manufacturer Certified (Toyota/Honda/Ford)"];
@@ -60,12 +64,21 @@ export const MechanicRegistration: React.FC = () => {
       }));
   };
 
-  const handleUploadMock = (docType: 'license' | 'insurance' | 'ase') => {
-      // Simulate upload delay
-      setTimeout(() => {
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>, docType: 'license' | 'insurance' | 'ase') => {
+      if (!e.target.files || e.target.files.length === 0) return;
+      const file = e.target.files[0];
+      
+      setUploadingDoc(docType);
+      try {
+          // Call API (Mock or Real Storage)
+          await api.storage.uploadFile(file, `documents/${docType}`);
           setVerificationDocs(prev => ({ ...prev, [docType]: true }));
-          notify("Document Uploaded", `${docType.toUpperCase()} uploaded successfully.`);
-      }, 800);
+          notify("Success", `${docType.toUpperCase()} uploaded.`);
+      } catch (err) {
+          notify("Error", "Upload failed. Try again.");
+      } finally {
+          setUploadingDoc(null);
+      }
   };
 
   const handleSubmit = async () => {
@@ -76,9 +89,11 @@ export const MechanicRegistration: React.FC = () => {
       
       setIsSubmitting(true);
       try {
+          // 1. Create Account
           await api.mechanic.register(formData);
-          // In a real app, we would trigger the Checkr API call here using the SSN
-          console.log("Triggering Checkr background check for:", formData.email);
+          
+          // 2. Trigger Checkr (Simulated)
+          await api.mechanic.verifyBackground(formData.email, ssn);
           
           setStep(5); // Success step
       } catch (e: any) {
@@ -258,6 +273,23 @@ export const MechanicRegistration: React.FC = () => {
                             ))}
                         </div>
                     </div>
+                    
+                    {/* Vehicle Specialization Multi-Select */}
+                    <div className="mb-6">
+                        <label className="block text-sm font-bold text-slate-700 mb-3">Vehicle Expertise</label>
+                        <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto p-2 border border-slate-100 rounded-xl">
+                            {VEHICLE_DATA_KEYS.map(make => (
+                                <button 
+                                    key={make}
+                                    className={`px-3 py-1 rounded border text-xs font-medium transition-all bg-slate-50 text-slate-600 hover:bg-slate-200`}
+                                    onClick={() => { /* Could add vehicle spec state here */ }}
+                                >
+                                    {make}
+                                </button>
+                            ))}
+                        </div>
+                        <p className="text-xs text-slate-400 mt-1">Select Makes you are comfortable servicing.</p>
+                    </div>
 
                     <div>
                         <label className="block text-sm font-bold text-slate-700 mb-3">Certifications</label>
@@ -294,8 +326,15 @@ export const MechanicRegistration: React.FC = () => {
                     <p className="text-slate-500 mb-6 text-sm">We need to verify your identity and insurance.</p>
 
                     <div className="space-y-4 mb-6">
-                        <div className="p-4 border border-dashed border-slate-300 rounded-xl bg-slate-50">
-                            <div className="flex justify-between items-center mb-2">
+                        <div className="p-4 border border-dashed border-slate-300 rounded-xl bg-slate-50 relative">
+                            <input 
+                                type="file" 
+                                accept="image/*"
+                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                onChange={(e) => handleUpload(e, 'license')}
+                                disabled={!!verificationDocs.license}
+                            />
+                            <div className="flex justify-between items-center mb-2 pointer-events-none">
                                 <div className="flex items-center gap-3">
                                     <div className="p-2 bg-white rounded-lg shadow-sm text-slate-500"><ShieldCheck size={20} /></div>
                                     <span className="font-bold text-slate-700 text-sm">Driver's License</span>
@@ -303,17 +342,22 @@ export const MechanicRegistration: React.FC = () => {
                                 {verificationDocs.license ? <span className="text-green-600 text-xs font-bold bg-green-100 px-2 py-1 rounded">Uploaded</span> : <span className="text-amber-600 text-xs font-bold bg-amber-100 px-2 py-1 rounded">Required</span>}
                             </div>
                             <button 
-                                onClick={() => handleUploadMock('license')}
-                                disabled={verificationDocs.license}
-                                className="w-full py-2 bg-white border border-slate-200 text-slate-600 text-sm font-medium rounded-lg hover:bg-slate-50 disabled:opacity-50 flex justify-center items-center gap-2"
+                                className="w-full py-2 bg-white border border-slate-200 text-slate-600 text-sm font-medium rounded-lg pointer-events-none flex justify-center items-center gap-2"
                             >
-                                {verificationDocs.license ? <CheckCircle size={16} /> : <Upload size={16} />} 
-                                {verificationDocs.license ? "File Received" : "Upload Photo"}
+                                {uploadingDoc === 'license' ? <Loader2 className="animate-spin" size={16}/> : verificationDocs.license ? <CheckCircle size={16} /> : <Upload size={16} />} 
+                                {uploadingDoc === 'license' ? "Uploading..." : verificationDocs.license ? "File Received" : "Tap to Upload Photo"}
                             </button>
                         </div>
 
-                         <div className="p-4 border border-dashed border-slate-300 rounded-xl bg-slate-50">
-                            <div className="flex justify-between items-center mb-2">
+                         <div className="p-4 border border-dashed border-slate-300 rounded-xl bg-slate-50 relative">
+                            <input 
+                                type="file" 
+                                accept="image/*,.pdf"
+                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                onChange={(e) => handleUpload(e, 'insurance')}
+                                disabled={!!verificationDocs.insurance}
+                            />
+                            <div className="flex justify-between items-center mb-2 pointer-events-none">
                                 <div className="flex items-center gap-3">
                                     <div className="p-2 bg-white rounded-lg shadow-sm text-slate-500"><FileText size={20} /></div>
                                     <span className="font-bold text-slate-700 text-sm">Liability Insurance</span>
@@ -321,12 +365,10 @@ export const MechanicRegistration: React.FC = () => {
                                 {verificationDocs.insurance ? <span className="text-green-600 text-xs font-bold bg-green-100 px-2 py-1 rounded">Uploaded</span> : <span className="text-amber-600 text-xs font-bold bg-amber-100 px-2 py-1 rounded">Required</span>}
                             </div>
                             <button 
-                                onClick={() => handleUploadMock('insurance')}
-                                disabled={verificationDocs.insurance}
-                                className="w-full py-2 bg-white border border-slate-200 text-slate-600 text-sm font-medium rounded-lg hover:bg-slate-50 disabled:opacity-50 flex justify-center items-center gap-2"
+                                className="w-full py-2 bg-white border border-slate-200 text-slate-600 text-sm font-medium rounded-lg pointer-events-none flex justify-center items-center gap-2"
                             >
-                                {verificationDocs.insurance ? <CheckCircle size={16} /> : <Upload size={16} />} 
-                                {verificationDocs.insurance ? "File Received" : "Upload Policy PDF"}
+                                {uploadingDoc === 'insurance' ? <Loader2 className="animate-spin" size={16}/> : verificationDocs.insurance ? <CheckCircle size={16} /> : <Upload size={16} />} 
+                                {uploadingDoc === 'insurance' ? "Uploading..." : verificationDocs.insurance ? "File Received" : "Tap to Upload Policy PDF"}
                             </button>
                         </div>
                     </div>

@@ -1,13 +1,13 @@
 
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useApp } from '../App';
-import { MapPin, DollarSign, Clock, User, ArrowRight, Shield, Settings, Power, Navigation, Phone, Bell, MessageSquare, X, Send, CheckCircle, PenTool, Sparkles, Loader2, FileText, Wrench, Mic, TrendingUp, RefreshCw, Calendar, ChevronRight, Timer, RotateCcw, Package, Wallet, CreditCard, Banknote, Smartphone, Filter, Map, Link2, Save } from 'lucide-react';
+import { MapPin, DollarSign, Clock, User, ArrowRight, Shield, Settings, Power, Navigation, Phone, Bell, MessageSquare, X, Send, CheckCircle, PenTool, Sparkles, Loader2, FileText, Wrench, Mic, TrendingUp, RefreshCw, Calendar, ChevronRight, Timer, RotateCcw, Package, Wallet, CreditCard, Banknote, Smartphone, Filter, Map as MapIcon, Link2, Save, ClipboardList, Lock } from 'lucide-react';
 import { useNavigate, Navigate } from 'react-router-dom';
-import { JobRequest, JobCompletionDetails, AiDiagnosisResult } from '../types';
+import { JobRequest, JobCompletionDetails, AiDiagnosisResult, MechanicSchedule } from '../types';
 import { diagnoseCarIssue } from '../services/geminiService';
 import { api } from '../services/api';
 
+// --- TYPES & INTERFACES ---
 interface DashboardChatMessage {
   id: string;
   sender: 'mechanic' | 'customer';
@@ -15,489 +15,430 @@ interface DashboardChatMessage {
   timestamp: number;
 }
 
-const DashboardMap: React.FC<{ requests: JobRequest[], activeId: string | null, onSelect: (id: string) => void, mechanicLocation?: {lat: number, lng: number} | null }> = ({ requests, activeId, onSelect, mechanicLocation }) => {
+// --- SUB-COMPONENTS ---
+
+// 1. Dashboard Map (Leaflet)
+const DashboardMap = ({ requests, activeId, onSelect, mechanicLocation }: { requests: JobRequest[], activeId: string | null, onSelect: (id: string) => void, mechanicLocation: {lat: number, lng: number} | null }) => {
   const mapRef = useRef<HTMLDivElement>(null);
   const leafletMap = useRef<any>(null);
-  const markersRef = useRef<any[]>([]);
-  const userMarkerRef = useRef<any>(null);
+  const markers = useRef<Map<string, any>>(new Map());
+  const mechanicMarker = useRef<any>(null);
 
   useEffect(() => {
-    if (!mapRef.current) return;
-    if (!(window as any).L) return; // Guard if Leaflet not loaded
+    if (!mapRef.current || !(window as any).L) return;
 
     if (!leafletMap.current) {
-      // Initialize map
-      const map = (window as any).L.map(mapRef.current, {
-          zoomControl: false
-      }).setView([36.8508, -76.2859], 10);
-      
-      (window as any).L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap contributors'
-      }).addTo(map);
+        const L = (window as any).L;
+        const map = L.map(mapRef.current, {
+            zoomControl: false,
+            attributionControl: false
+        }).setView([36.8508, -76.2859], 12); // Hampton Roads
 
-      leafletMap.current = map;
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+            maxZoom: 19
+        }).addTo(map);
+        leafletMap.current = map;
     }
+  }, []);
 
-    const L = (window as any).L;
+  // Update Job Pins
+  useEffect(() => {
+      if (!leafletMap.current) return;
+      const L = (window as any).L;
 
-    // --- Update Mechanic Marker (Blue Dot) ---
-    if (mechanicLocation) {
-        const pulseIcon = L.divIcon({
-            className: 'custom-div-icon',
-            html: `<div class="relative w-4 h-4">
-                     <div class="absolute w-full h-full bg-blue-500 rounded-full animate-ping opacity-75"></div>
-                     <div class="absolute w-full h-full bg-blue-600 border-2 border-white rounded-full shadow-md"></div>
-                   </div>`,
-            iconSize: [16, 16],
-            iconAnchor: [8, 8]
-        });
+      // Remove old markers not in current list
+      markers.current.forEach((marker, id) => {
+          if (!requests.find(r => r.id === id)) {
+              marker.remove();
+              markers.current.delete(id);
+          }
+      });
 
-        if (!userMarkerRef.current) {
-            userMarkerRef.current = L.marker([mechanicLocation.lat, mechanicLocation.lng], { 
-                icon: pulseIcon,
-                zIndexOffset: 2000 
-            }).addTo(leafletMap.current);
-            // Center initially on mechanic
-            leafletMap.current.setView([mechanicLocation.lat, mechanicLocation.lng], 13);
-        } else {
-            userMarkerRef.current.setLatLng([mechanicLocation.lat, mechanicLocation.lng]);
-        }
-    }
+      requests.forEach(req => {
+          const lat = req.location?.lat || (36.8508 + (Math.random() - 0.5) * 0.1);
+          const lng = req.location?.lng || (-76.2859 + (Math.random() - 0.5) * 0.1);
+          const isActive = req.id === activeId;
 
-    // --- Update Job Markers ---
-    // Clear existing markers
-    markersRef.current.forEach(m => leafletMap.current.removeLayer(m));
-    markersRef.current = [];
+          let marker = markers.current.get(req.id);
 
-    // Default icon
-    const defaultIcon = L.divIcon({
-      className: 'custom-div-icon',
-      html: `<div style="background-color: #3b82f6; width: 14px; height: 14px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 4px rgba(0,0,0,0.3);"></div>`,
-      iconSize: [14, 14],
-      iconAnchor: [7, 7]
-    });
-
-    const activeIcon = L.divIcon({
-      className: 'custom-div-icon',
-      html: `<div style="background-color: #10b981; width: 20px; height: 20px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 8px rgba(0,0,0,0.4); transform: scale(1.1);"></div>`,
-      iconSize: [20, 20],
-      iconAnchor: [10, 10]
-    });
-
-    // Add markers for requests
-    requests.forEach(req => {
-        // Use real lat/lng if available, otherwise fallback/mock
-        const lat = req.location?.lat || 37.77 + (req.coordinates.y - 50) * 0.002;
-        const lng = req.location?.lng || -122.41 + (req.coordinates.x - 50) * 0.002;
-
-        const marker = L.marker([lat, lng], {
-            icon: req.id === activeId ? activeIcon : defaultIcon,
-            zIndexOffset: req.id === activeId ? 1000 : 0
-        }).addTo(leafletMap.current);
-
-        // Tooltip Content
-        const tooltipContent = `
-            <div style="text-align: center; padding: 4px;">
-                <div style="font-weight: bold; color: #0f172a; font-size: 13px;">${req.customerName}</div>
-                <div style="font-size: 11px; color: #64748b;">${req.issue}</div>
-                ${req.id === activeId ? '<div style="font-size:10px; color:#10b981; font-weight:bold; margin-top:2px;">SELECTED</div>' : ''}
+          const iconHtml = `
+            <div class="relative group">
+                <div class="absolute -inset-2 bg-${isActive ? 'blue' : 'slate'}-500/20 rounded-full blur-sm ${isActive ? 'animate-pulse' : ''}"></div>
+                <div class="w-8 h-8 ${isActive ? 'bg-blue-600 scale-110' : 'bg-white border-2 border-slate-400'} rounded-full flex items-center justify-center shadow-lg transition-all transform duration-300">
+                    ${req.status === 'COMPLETED' ? 
+                        `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${isActive ? 'white' : '#64748b'}" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>` :
+                        `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${isActive ? 'white' : '#64748b'}" stroke-width="3"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`
+                    }
+                </div>
+                ${isActive ? `<div class="absolute -bottom-2 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[8px] border-t-blue-600"></div>` : ''}
             </div>
-        `;
+          `;
 
-        marker.bindTooltip(tooltipContent, {
-            permanent: req.id === activeId, // Always show if active to satisfy "show on click" persistence
-            direction: 'top',
-            offset: [0, -15],
-            opacity: 1,
-            className: 'custom-tooltip'
-        });
+          const icon = L.divIcon({
+              className: 'custom-pin',
+              html: iconHtml,
+              iconSize: [32, 32],
+              iconAnchor: [16, 32]
+          });
 
-        marker.on('click', () => {
-             onSelect(req.id);
-             leafletMap.current.flyTo([lat, lng], 14);
-        });
+          if (!marker) {
+              marker = L.marker([lat, lng], { icon }).addTo(leafletMap.current);
+              marker.on('click', () => onSelect(req.id));
+              markers.current.set(req.id, marker);
+          } else {
+              marker.setIcon(icon);
+              marker.setLatLng([lat, lng]);
+          }
+          
+          // Tooltip logic
+          const tooltipContent = `
+            <div class="font-bold text-slate-800">${req.customerName}</div>
+            <div class="text-xs text-slate-500">${req.issue}</div>
+          `;
+          marker.bindTooltip(tooltipContent, { direction: 'top', offset: [0, -30], permanent: isActive });
+      });
 
-        markersRef.current.push(marker);
-    });
+  }, [requests, activeId]);
 
-  }, [requests, activeId, onSelect, mechanicLocation]);
+  // Update Mechanic Location Pin
+  useEffect(() => {
+      if (!leafletMap.current || !mechanicLocation) return;
+      const L = (window as any).L;
 
-  return <div ref={mapRef} className="w-full h-full bg-slate-100 relative z-0" />;
+      if (!mechanicMarker.current) {
+          const icon = L.divIcon({
+              className: 'mechanic-location',
+              html: `<div class="w-4 h-4 bg-blue-500 rounded-full border-2 border-white shadow-md relative"><div class="absolute inset-0 bg-blue-500 rounded-full animate-ping opacity-75"></div></div>`,
+              iconSize: [16, 16]
+          });
+          mechanicMarker.current = L.marker([mechanicLocation.lat, mechanicLocation.lng], { icon }).addTo(leafletMap.current);
+      } else {
+          mechanicMarker.current.setLatLng([mechanicLocation.lat, mechanicLocation.lng]);
+      }
+  }, [mechanicLocation]);
+
+  return <div ref={mapRef} className="w-full h-full bg-slate-100" />;
 };
 
-const JobChat: React.FC<{ job: JobRequest, onClose: () => void }> = ({ job, onClose }) => {
-  const storageKey = `mn_chat_${job.id}`;
-  
-  const [messages, setMessages] = useState<DashboardChatMessage[]>(() => {
-    const saved = localStorage.getItem(storageKey);
-    if (saved) {
+// 2. Job Chat Component
+const JobChat = ({ job, onClose }: { job: JobRequest, onClose: () => void }) => {
+    const storageKey = `mn_chat_${job.id}`;
+    const [messages, setMessages] = useState<DashboardChatMessage[]>([]);
+    const [inputText, setInputText] = useState('');
+    const [isListening, setIsListening] = useState(false);
+    const messagesEndRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const load = () => {
+            const saved = localStorage.getItem(storageKey);
+            if (saved) setMessages(JSON.parse(saved));
+        };
+        load();
+        const interval = setInterval(load, 1000); // Poll for customer replies
+        return () => clearInterval(interval);
+    }, [storageKey]);
+
+    useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, [messages]);
+
+    const handleSend = (e?: React.FormEvent) => {
+        if (e) e.preventDefault();
+        if (!inputText.trim()) return;
+
+        const newMsg: DashboardChatMessage = {
+            id: Date.now().toString(),
+            sender: 'mechanic',
+            text: inputText,
+            timestamp: Date.now()
+        };
+
+        const updated = [...messages, newMsg];
+        localStorage.setItem(storageKey, JSON.stringify(updated));
+        setMessages(updated);
+        setInputText('');
+
+        // Sim Customer Reply
+        setTimeout(() => {
+            const reply: DashboardChatMessage = {
+                id: (Date.now() + 1).toString(),
+                sender: 'customer',
+                text: "Thanks for the update!",
+                timestamp: Date.now()
+            };
+            const withReply = [...updated, reply];
+            localStorage.setItem(storageKey, JSON.stringify(withReply));
+            setMessages(withReply);
+        }, 3000);
+    };
+
+    const startDictation = () => {
+        if (!('webkitSpeechRecognition' in window)) return;
+        const recognition = new (window as any).webkitSpeechRecognition();
+        recognition.lang = 'en-US';
+        recognition.onstart = () => setIsListening(true);
+        recognition.onend = () => setIsListening(false);
+        recognition.onresult = (e: any) => {
+            setInputText(e.results[0][0].transcript);
+        };
+        recognition.start();
+    };
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+            <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden flex flex-col h-[600px] animate-scale-up">
+                <div className="bg-slate-900 p-4 text-white flex justify-between items-center">
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center font-bold">{job.customerName[0]}</div>
+                        <div>
+                            <h3 className="font-bold">{job.customerName}</h3>
+                            <p className="text-xs text-slate-300">{job.vehicle}</p>
+                        </div>
+                    </div>
+                    <button onClick={onClose}><X size={20}/></button>
+                </div>
+                <div className="flex-1 bg-slate-50 p-4 overflow-y-auto space-y-4">
+                    {messages.map(m => (
+                        <div key={m.id} className={`flex ${m.sender === 'mechanic' ? 'justify-end' : 'justify-start'}`}>
+                            <div className={`max-w-[80%] p-3 rounded-2xl text-sm ${m.sender === 'mechanic' ? 'bg-blue-600 text-white rounded-br-none' : 'bg-white border border-slate-200 text-slate-800 rounded-bl-none'}`}>
+                                {m.text}
+                            </div>
+                        </div>
+                    ))}
+                    <div ref={messagesEndRef} />
+                </div>
+                <div className="p-3 bg-white border-t border-slate-100 flex gap-2 relative">
+                    <input 
+                        className="flex-1 bg-slate-100 rounded-xl pl-4 pr-10 py-3 outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Message customer..."
+                        value={inputText}
+                        onChange={e => setInputText(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && handleSend()}
+                    />
+                    <button onClick={startDictation} className={`absolute right-16 top-5 ${isListening ? 'text-red-500 animate-pulse' : 'text-slate-400'}`}><Mic size={18}/></button>
+                    <button onClick={() => handleSend()} className="bg-blue-600 text-white p-3 rounded-xl hover:bg-blue-500"><Send size={20}/></button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// 3. Completion Modal
+const CompletionModal = ({ job, onClose, onComplete }: { job: JobRequest, onClose: () => void, onComplete: (details: JobCompletionDetails, method: 'CARD'|'CASH'|'EXTERNAL') => void }) => {
+    const [step, setStep] = useState(1);
+    const [details, setDetails] = useState<JobCompletionDetails>({ description: '', parts: '', notes: '', partsCost: 0 });
+    const [paymentMethod, setPaymentMethod] = useState<'CARD'|'CASH'|'EXTERNAL'>('CARD');
+    const [aiLoading, setAiLoading] = useState(false);
+    const [recordingField, setRecordingField] = useState<string | null>(null);
+
+    // Auto-fill logic from AI
+    useEffect(() => {
+        if (job.aiAnalysis?.recommendedServices?.[0] && !details.description) {
+            // Optional: auto-fill logic if desired, but explicit button is safer
+        }
+    }, [job]);
+
+    const handleAiAnalyze = async () => {
+        setAiLoading(true);
         try {
-            return JSON.parse(saved);
-        } catch (e) {
-            console.error("Error parsing chat", e);
-        }
-    }
-    return [
-      { id: '1', sender: 'customer', text: `Hi, I need help with my ${job.vehicle}.`, timestamp: Date.now() - 10000 }
-    ];
-  });
-  
-  const [inputText, setInputText] = useState('');
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+            const res = await diagnoseCarIssue(job.issue, job.vehicle);
+            if (res.recommendedServices.length > 0) {
+                const svc = res.recommendedServices[0];
+                setDetails(prev => ({
+                    ...prev,
+                    description: `${svc.name} (${svc.duration})`,
+                    parts: svc.parts.join(', ')
+                }));
+            }
+        } catch(e) {} finally { setAiLoading(false); }
+    };
 
-  useEffect(() => {
-    localStorage.setItem(storageKey, JSON.stringify(messages));
-  }, [messages, storageKey]);
+    const startDictation = (field: keyof JobCompletionDetails) => {
+        if (!('webkitSpeechRecognition' in window)) return;
+        const recognition = new (window as any).webkitSpeechRecognition();
+        recognition.lang = 'en-US';
+        recognition.onstart = () => setRecordingField(field as string);
+        recognition.onend = () => setRecordingField(null);
+        recognition.onresult = (e: any) => {
+            setDetails(prev => ({ ...prev, [field]: e.results[0][0].transcript }));
+        };
+        recognition.start();
+    };
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    // Financials
+    const subtotal = job.payout; // Labor
+    const parts = details.partsCost || 0;
+    const total = subtotal + parts;
+    const fee = subtotal * 0.20; // 20% on labor
+    const net = total - fee;
 
-  useEffect(() => {
-    const lastMsg = messages[messages.length - 1];
-    if (lastMsg && lastMsg.sender === 'mechanic') {
-        const timer = setTimeout(() => {
-            const responses = ["Okay, thanks!", "See you soon!", "Great.", "Code is 1234"];
-            const randomResponse = responses[Math.floor(Math.random() * responses.length)];
-            const reply: DashboardChatMessage = { id: Date.now().toString(), sender: 'customer', text: randomResponse, timestamp: Date.now() };
-            setMessages(prev => [...prev, reply]);
-        }, 4000);
-        return () => clearTimeout(timer);
-    }
-  }, [messages]);
-
-  const handleSend = (e?: React.FormEvent) => {
-      e?.preventDefault();
-      if (!inputText.trim()) return;
-      const newMsg: DashboardChatMessage = { id: Date.now().toString(), sender: 'mechanic', text: inputText, timestamp: Date.now() };
-      setMessages(prev => [...prev, newMsg]);
-      setInputText('');
-  };
-  
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fade-in">
-        <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden flex flex-col h-[600px] animate-scale-up">
-            <div className="bg-blue-600 p-4 text-white flex justify-between items-center">
-                <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center font-bold border-2 border-blue-400">
-                        {job.customerName.charAt(0)}
-                    </div>
-                    <div>
-                        <h3 className="font-bold">{job.customerName}</h3>
-                        <p className="text-xs text-blue-200 flex items-center gap-1">
-                            <span className="w-2 h-2 bg-green-400 rounded-full"></span> Online
-                        </p>
-                    </div>
-                </div>
-                <button onClick={onClose} className="hover:bg-blue-500 p-2 rounded-full transition-colors"><X size={20} /></button>
-            </div>
-            <div className="flex-1 bg-slate-50 p-4 overflow-y-auto space-y-4">
-                {messages.map(msg => (
-                    <div key={msg.id} className={`flex ${msg.sender === 'mechanic' ? 'justify-end' : 'justify-start'}`}>
-                        <div className={`max-w-[80%] p-3 rounded-2xl text-sm shadow-sm ${msg.sender === 'mechanic' ? 'bg-blue-600 text-white rounded-br-none' : 'bg-white border border-slate-200 text-slate-800 rounded-bl-none'}`}>
-                            {msg.text}
-                        </div>
-                    </div>
-                ))}
-                <div ref={messagesEndRef} />
-            </div>
-            <form onSubmit={handleSend} className="p-4 bg-white border-t border-slate-100 flex gap-2">
-                <input className="w-full bg-slate-100 rounded-xl pl-4 pr-10 outline-none" placeholder="Message..." value={inputText} onChange={e => setInputText(e.target.value)} />
-                <button type="submit" className="p-3 bg-blue-600 text-white rounded-xl"><Send size={20} /></button>
-            </form>
-        </div>
-    </div>
-  );
-};
-
-const NavigationModal = ({ job, onClose, onConfirm }: { job: JobRequest, onClose: () => void, onConfirm: (startNav: boolean) => void }) => {
-  return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-fade-in">
-        <div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden flex flex-col animate-scale-up">
-             <div className="flex justify-end p-4 pb-0">
-                <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={24} /></button>
-             </div>
-             <div className="px-6 pb-8 text-center">
-                <div className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm relative">
-                    <Navigation size={32} className="text-blue-600" />
-                </div>
-                <h2 className="text-2xl font-bold text-slate-900 mb-2">Start Navigation?</h2>
-                <div className="space-y-3">
-                    <button onClick={() => onConfirm(true)} className="w-full py-4 bg-blue-600 text-white font-bold rounded-xl flex items-center justify-center gap-2">Start Navigation</button>
-                    <button onClick={() => onConfirm(false)} className="w-full py-4 bg-white border border-slate-200 text-slate-700 font-bold rounded-xl">Just Accept Job</button>
-                </div>
-             </div>
-        </div>
-    </div>
-  );
-};
-
-const CompletionModal = ({ job, onClose, onProcessPayment }: { job: JobRequest, onClose: () => void, onProcessPayment: (details: JobCompletionDetails, paymentMethod: 'CARD' | 'CASH' | 'EXTERNAL') => Promise<void> }) => {
-  const [stage, setStage] = useState<'DETAILS' | 'SUCCESS'>('DETAILS');
-  const [details, setDetails] = useState<JobCompletionDetails>({ description: `Service for ${job.issue}`, parts: '', partsCost: 0, notes: '', collectedPaymentMethod: 'CARD' });
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [aiResult, setAiResult] = useState<AiDiagnosisResult | null>(null);
-  const [analyzing, setAnalyzing] = useState(false);
-  
-  // Initialize Payment Method
-  useEffect(() => {
-      setDetails(prev => ({ ...prev, collectedPaymentMethod: job.paymentMethod ? 'CARD' : 'CASH' }));
-  }, [job.paymentMethod]);
-
-  // Financial Calculations
-  const baseLabor = job.payout;
-  const partsCost = details.partsCost || 0;
-  const customerTotal = baseLabor + partsCost;
-  const platformFee = baseLabor * 0.20;
-  const mechanicNet = customerTotal - platformFee;
-  
-  const handleProcess = async () => {
-    if (!details.description) return;
-    setIsSubmitting(true);
-    try {
-        await onProcessPayment(details, details.collectedPaymentMethod || 'CASH');
-        setStage('SUCCESS');
-    } catch(e) {
-        console.error(e);
-    } finally {
-        setIsSubmitting(false);
-    }
-  };
-
-  const handleRunAi = async () => {
-    setAnalyzing(true);
-    try {
-      const result = await diagnoseCarIssue(job.issue, job.vehicle);
-      setAiResult(result);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setAnalyzing(false);
-    }
-  };
-
-  const applyRecommendation = (svc: { name: string; duration: string; parts: string[] }) => {
-      setDetails(prev => ({
-          ...prev,
-          description: `${svc.name} (${svc.duration})`,
-          parts: svc.parts.join(', ')
-      }));
-  };
-
-  if (stage === 'SUCCESS') {
-      return (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-fade-in">
-           <div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl p-8 text-center animate-scale-up">
-               <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <CheckCircle size={40} />
-               </div>
-               <h2 className="text-3xl font-bold text-slate-900 mb-2">${mechanicNet.toFixed(2)}</h2>
-               <p className="text-slate-500 font-medium mb-8">Added to your earnings</p>
-               
-               <div className="bg-slate-50 rounded-xl p-4 mb-8 text-sm text-slate-600">
-                  <div className="flex justify-between mb-2">
-                     <span>Customer Paid</span>
-                     <span className="font-bold text-slate-900">${customerTotal.toFixed(2)}</span>
-                  </div>
-                  {partsCost > 0 && (
-                      <div className="flex justify-between mb-2">
-                        <span>Parts Reimbursement</span>
-                        <span className="font-medium text-slate-700">${partsCost.toFixed(2)}</span>
-                      </div>
-                  )}
-                  <div className="flex justify-between border-t border-slate-200 pt-2 mt-2">
-                     <span>Platform Fee</span>
-                     <span className="text-red-500">-${platformFee.toFixed(2)}</span>
-                  </div>
-               </div>
-
-               <button onClick={onClose} className="w-full py-4 bg-slate-900 text-white font-bold rounded-xl shadow-lg hover:bg-slate-800 transition-colors">
-                  Done
-               </button>
-           </div>
-        </div>
-      );
-  }
-
-  return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-fade-in">
-        <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden flex flex-col animate-scale-up relative max-h-[90vh]">
-            <button onClick={onClose} className="absolute top-4 right-4 text-white/80 hover:text-white z-10">
-                <X size={24} />
-            </button>
-            <div className="bg-slate-900 p-8 text-white text-center relative overflow-hidden flex-shrink-0">
-                <div className="absolute top-0 left-0 w-full h-full opacity-10 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')]"></div>
-                <div className="relative z-10">
-                    <h2 className="text-2xl font-bold mb-1">Job Complete!</h2>
-                    <p className="text-slate-300 text-sm">Review & Collect Payment</p>
-                </div>
-            </div>
-            
-            <div className="p-6 space-y-4 bg-white overflow-y-auto flex-1">
-                {/* AI Diagnostics Panel */}
-                <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100 mb-2">
-                    <div className="flex justify-between items-center mb-3">
-                        <h3 className="font-bold text-indigo-900 text-sm flex items-center gap-2">
-                            <Sparkles size={16} /> AI Diagnostics
-                        </h3>
-                        {!aiResult && (
-                            <button 
-                                onClick={handleRunAi} 
-                                disabled={analyzing}
-                                className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg font-bold hover:bg-indigo-500 disabled:opacity-50 flex items-center gap-1"
-                            >
-                                {analyzing ? <Loader2 className="animate-spin" size={14} /> : 'Analyze'}
-                            </button>
-                        )}
-                    </div>
-                    
-                    {aiResult && (
-                        <div className="space-y-3 animate-fade-in">
-                            <p className="text-xs text-indigo-700 bg-white p-2 rounded border border-indigo-100">{aiResult.diagnosis}</p>
-                            <div className="space-y-2">
-                                {aiResult.recommendedServices.map((svc, i) => (
-                                    <div key={i} className="bg-white p-2 rounded border border-indigo-100 flex justify-between items-center group">
-                                        <div>
-                                            <p className="text-xs font-bold text-slate-800">{svc.name}</p>
-                                            <p className="text-[10px] text-slate-500">{svc.duration}</p>
-                                        </div>
-                                        <button 
-                                            onClick={() => applyRecommendation(svc)}
-                                            className="text-[10px] bg-indigo-100 text-indigo-700 px-2 py-1 rounded font-bold hover:bg-indigo-200 transition-colors"
-                                        >
-                                            Use
-                                        </button>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
+    if (step === 1) return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+            <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl p-6 animate-scale-up max-h-[90vh] overflow-y-auto">
+                <div className="flex justify-between items-center mb-6">
+                    <h2 className="text-2xl font-bold text-slate-900">Complete Job</h2>
+                    <button onClick={onClose}><X size={24} className="text-slate-400 hover:text-slate-600"/></button>
                 </div>
 
-                {/* Earnings Summary Box */}
-                <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-2">
-                    <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-                        <Wallet size={16}/> Earnings Breakdown
-                    </h3>
-                    <div className="flex justify-between text-sm text-slate-500">
-                        <span>Labor (Agreed Quote)</span>
-                        <span>${baseLabor.toFixed(2)}</span>
-                    </div>
-                    {partsCost > 0 && (
-                        <div className="flex justify-between text-sm text-slate-500">
-                            <span>Parts Reimbursement</span>
-                            <span>${partsCost.toFixed(2)}</span>
-                        </div>
-                    )}
-                    <div className="flex justify-between text-sm text-slate-500">
-                        <span>Platform Fee (20% Labor)</span>
-                        <span className="text-red-500">-${platformFee.toFixed(2)}</span>
-                    </div>
-                    <div className="border-t border-slate-200 my-2"></div>
-                    <div className="flex justify-between font-bold text-slate-900 text-sm">
-                        <span>Customer Total Charge</span>
-                        <span>${customerTotal.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between font-bold text-lg text-green-600 pt-1">
-                        <span>Your Net Earnings</span>
-                        <span>${mechanicNet.toFixed(2)}</span>
-                    </div>
-                </div>
-
-                {/* Payment Method Selector */}
-                <div className="bg-white p-4 rounded-xl border border-slate-200">
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Collect Payment Via</label>
-                    <div className="grid grid-cols-2 gap-3">
-                        {job.paymentMethod ? (
-                            <button
-                                onClick={() => setDetails(p => ({...p, collectedPaymentMethod: 'CARD'}))}
-                                className={`p-3 rounded-xl border-2 flex flex-col items-center gap-2 transition-all ${details.collectedPaymentMethod === 'CARD' ? 'border-blue-600 bg-blue-50 text-blue-700 shadow-sm' : 'border-slate-100 bg-white text-slate-500 hover:border-slate-200'}`}
-                            >
-                                <CreditCard size={24} />
-                                <div className="text-center">
-                                    <span className="block text-xs font-bold">App Payment</span>
-                                    <span className="block text-[10px] opacity-70">•••• {job.paymentMethod.last4}</span>
-                                </div>
-                            </button>
-                        ) : (
-                            <button
-                                disabled
-                                className="p-3 rounded-xl border-2 border-slate-100 bg-slate-50 text-slate-400 flex flex-col items-center gap-2 opacity-50 cursor-not-allowed"
-                            >
-                                <CreditCard size={24} />
-                                <div className="text-center">
-                                    <span className="block text-xs font-bold">App Payment</span>
-                                    <span className="block text-[10px]">No card linked</span>
-                                </div>
-                            </button>
-                        )}
-                        <button
-                            onClick={() => setDetails(p => ({...p, collectedPaymentMethod: 'CASH'}))}
-                            className={`p-3 rounded-xl border-2 flex flex-col items-center gap-2 transition-all ${details.collectedPaymentMethod === 'CASH' ? 'border-green-600 bg-green-50 text-green-700 shadow-sm' : 'border-slate-100 bg-white text-slate-500 hover:border-slate-200'}`}
-                        >
-                            <Banknote size={24} />
-                            <div className="text-center">
-                                <span className="block text-xs font-bold">Cash / External</span>
-                                <span className="block text-[10px] opacity-70">Zelle, Venmo, Cash</span>
-                            </div>
+                {/* AI Assist */}
+                <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 mb-6">
+                    <div className="flex justify-between items-center mb-2">
+                        <h3 className="font-bold text-blue-900 flex items-center gap-2"><Sparkles size={16}/> AI Diagnostics</h3>
+                        <button onClick={handleAiAnalyze} disabled={aiLoading} className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg font-bold">
+                            {aiLoading ? 'Analyzing...' : 'Auto-Fill Form'}
                         </button>
                     </div>
+                    <p className="text-xs text-blue-700">Use AI to suggest service descriptions and parts based on the vehicle issue.</p>
                 </div>
 
-                <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Service Notes</label>
-                    <textarea 
-                        className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm min-h-[60px] focus:ring-2 focus:ring-blue-500 outline-none"
-                        value={details.description}
-                        onChange={e => setDetails({...details, description: e.target.value})}
-                    />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                    <div className="col-span-2 md:col-span-1">
-                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Parts Used</label>
-                        <input 
-                            className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                            placeholder="e.g. Oil Filter"
-                            value={details.parts}
-                            onChange={e => setDetails({...details, parts: e.target.value})}
-                        />
+                <div className="space-y-4">
+                    <div>
+                        <label className="block text-xs font-bold text-slate-500 mb-1 uppercase">Service Performed <span className="text-red-500">*</span></label>
+                        <div className="relative">
+                            <textarea 
+                                className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl h-24 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                                placeholder="Describe the work done..."
+                                value={details.description}
+                                onChange={e => setDetails({...details, description: e.target.value})}
+                            />
+                            <button onClick={() => startDictation('description')} className={`absolute right-2 bottom-2 ${recordingField === 'description' ? 'text-red-500 animate-pulse' : 'text-slate-400'}`}><Mic size={18}/></button>
+                        </div>
                     </div>
-                    <div className="col-span-2 md:col-span-1">
-                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Parts Cost ($)</label>
-                        <input 
-                            type="number"
-                            className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                            placeholder="0.00"
-                            min="0"
-                            step="0.01"
-                            value={details.partsCost === undefined || Number.isNaN(details.partsCost) ? '' : details.partsCost}
-                            onChange={e => setDetails({...details, partsCost: parseFloat(e.target.value) || 0})}
-                        />
+
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 mb-1 uppercase">Parts Used</label>
+                            <div className="relative">
+                                <input 
+                                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm"
+                                    placeholder="e.g. Brake Pads"
+                                    value={details.parts}
+                                    onChange={e => setDetails({...details, parts: e.target.value})}
+                                />
+                                <button onClick={() => startDictation('parts')} className={`absolute right-2 top-3 ${recordingField === 'parts' ? 'text-red-500 animate-pulse' : 'text-slate-400'}`}><Mic size={18}/></button>
+                            </div>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 mb-1 uppercase">Parts Cost ($)</label>
+                            <input 
+                                type="number"
+                                min="0"
+                                className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm"
+                                placeholder="0.00"
+                                value={details.partsCost || ''}
+                                onChange={e => setDetails({...details, partsCost: parseFloat(e.target.value) || 0})}
+                            />
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="block text-xs font-bold text-slate-500 mb-1 uppercase">Final Notes</label>
+                        <div className="relative">
+                            <textarea 
+                                className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl h-20 text-sm"
+                                placeholder="Any recommendations for the customer..."
+                                value={details.notes}
+                                onChange={e => setDetails({...details, notes: e.target.value})}
+                            />
+                            <button onClick={() => startDictation('notes')} className={`absolute right-2 bottom-2 ${recordingField === 'notes' ? 'text-red-500 animate-pulse' : 'text-slate-400'}`}><Mic size={18}/></button>
+                        </div>
                     </div>
                 </div>
-            </div>
 
-            <div className="p-4 border-t border-slate-100 flex gap-3 bg-white shadow-[0_-5px_20px_rgba(0,0,0,0.05)] z-20">
                 <button 
-                    onClick={handleProcess}
-                    disabled={isSubmitting}
-                    className={`w-full py-4 text-white font-bold rounded-xl transition-all shadow-lg flex items-center justify-center gap-2 ${details.collectedPaymentMethod === 'CARD' ? 'bg-blue-600 hover:bg-blue-500 shadow-blue-200' : 'bg-green-600 hover:bg-green-500 shadow-green-200'} disabled:opacity-70`}
+                    disabled={!details.description}
+                    onClick={() => setStep(2)} 
+                    className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold mt-6 hover:bg-blue-500 disabled:opacity-50"
                 >
-                    {isSubmitting ? <Loader2 className="animate-spin" /> : (details.collectedPaymentMethod === 'CARD' ? `Charge Card $${customerTotal.toFixed(2)}` : `Confirm Cash ($${customerTotal.toFixed(2)})`)}
+                    Next: Payment
                 </button>
             </div>
         </div>
-    </div>
-  );
+    );
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+            <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl p-6 animate-scale-up">
+                <div className="flex justify-between items-center mb-6">
+                    <h2 className="text-2xl font-bold text-slate-900">Process Payment</h2>
+                    <button onClick={() => setStep(1)} className="text-sm text-slate-500 font-bold">Back</button>
+                </div>
+
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 mb-6 space-y-3">
+                    <div className="flex justify-between text-sm">
+                        <span className="text-slate-500">Labor (Base)</span>
+                        <span className="font-medium">${subtotal.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                        <span className="text-slate-500">Parts Cost</span>
+                        <span className="font-medium">${parts.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm text-red-500">
+                        <span>Platform Fee (20% Labor)</span>
+                        <span>-${fee.toFixed(2)}</span>
+                    </div>
+                    <div className="border-t border-slate-200 pt-2 flex justify-between text-lg font-bold text-slate-900">
+                        <span>Your Payout</span>
+                        <span className="text-green-600">${net.toFixed(2)}</span>
+                    </div>
+                    <div className="text-xs text-center text-slate-400 pt-1">Customer Charged: ${total.toFixed(2)}</div>
+                </div>
+
+                <div className="space-y-3 mb-6">
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Payment Method</label>
+                    <button 
+                        onClick={() => setPaymentMethod('CARD')}
+                        className={`w-full p-4 rounded-xl border-2 flex items-center justify-between transition-all ${paymentMethod === 'CARD' ? 'border-blue-600 bg-blue-50' : 'border-slate-200 hover:bg-gray-50'}`}
+                    >
+                        <div className="flex items-center gap-3">
+                            <CreditCard className={paymentMethod === 'CARD' ? 'text-blue-600' : 'text-slate-400'} />
+                            <div className="text-left">
+                                <p className={`font-bold ${paymentMethod === 'CARD' ? 'text-blue-900' : 'text-slate-700'}`}>App Payment</p>
+                                <p className="text-xs text-slate-500">Customer's card on file (Stripe)</p>
+                            </div>
+                        </div>
+                        {paymentMethod === 'CARD' && <CheckCircle className="text-blue-600" size={20}/>}
+                    </button>
+
+                    <button 
+                        onClick={() => setPaymentMethod('CASH')}
+                        className={`w-full p-4 rounded-xl border-2 flex items-center justify-between transition-all ${paymentMethod === 'CASH' ? 'border-green-600 bg-green-50' : 'border-slate-200 hover:bg-gray-50'}`}
+                    >
+                        <div className="flex items-center gap-3">
+                            <Banknote className={paymentMethod === 'CASH' ? 'text-green-600' : 'text-slate-400'} />
+                            <div className="text-left">
+                                <p className={`font-bold ${paymentMethod === 'CASH' ? 'text-green-900' : 'text-slate-700'}`}>Cash / External</p>
+                                <p className="text-xs text-slate-500">You collected cash/Venmo directly</p>
+                            </div>
+                        </div>
+                        {paymentMethod === 'CASH' && <CheckCircle className="text-green-600" size={20}/>}
+                    </button>
+                </div>
+
+                <button 
+                    onClick={() => onComplete(details, paymentMethod)}
+                    className="w-full bg-green-600 text-white py-4 rounded-xl font-bold hover:bg-green-500 shadow-lg shadow-green-200 transition-all"
+                >
+                    {paymentMethod === 'CARD' ? `Charge Card $${total.toFixed(2)}` : 'Confirm Payment Collected'}
+                </button>
+                {paymentMethod === 'CASH' && (
+                    <p className="text-xs text-center text-slate-400 mt-3">
+                        * Platform fee will be deducted from your wallet balance.
+                    </p>
+                )}
+            </div>
+        </div>
+    );
 };
+
+// --- MAIN COMPONENT ---
 
 export const MechanicDashboard: React.FC = () => {
   const { user, notify, isLoading: appLoading } = useApp();
   const navigate = useNavigate();
 
   const [isLoading, setIsLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'requests' | 'earnings' | 'profile' | 'map'>('requests');
+  const [activeTab, setActiveTab] = useState<'requests' | 'earnings' | 'profile' | 'map' | 'history'>('requests');
   const [filterStatus, setFilterStatus] = useState<'ALL' | 'NEW' | 'ACTIVE' | 'COMPLETED'>('ALL');
   const [isOnline, setIsOnline] = useState(false);
   const [isStripeConnected, setIsStripeConnected] = useState(false);
@@ -508,6 +449,15 @@ export const MechanicDashboard: React.FC = () => {
   // Mechanic Profile Edit State
   const [profileBio, setProfileBio] = useState('');
   const [profileExp, setProfileExp] = useState(1);
+  const [schedule, setSchedule] = useState<MechanicSchedule>({
+      monday: { start: '09:00', end: '17:00', active: true },
+      tuesday: { start: '09:00', end: '17:00', active: true },
+      wednesday: { start: '09:00', end: '17:00', active: true },
+      thursday: { start: '09:00', end: '17:00', active: true },
+      friday: { start: '09:00', end: '17:00', active: true },
+      saturday: { start: '10:00', end: '14:00', active: true },
+      sunday: { start: '09:00', end: '17:00', active: false },
+  });
 
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [chatJob, setChatJob] = useState<JobRequest | null>(null);
@@ -518,12 +468,13 @@ export const MechanicDashboard: React.FC = () => {
   
   const prevRequestsRef = useRef<JobRequest[]>([]);
 
-  // Get Mechanic Location on mount
+  // Get Mechanic Location on mount with high accuracy for background prep
   useEffect(() => {
     if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
             (pos) => setMechanicLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-            (err) => console.log("Location access denied", err)
+            (err) => console.log("Location access denied", err),
+            { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
         );
     }
   }, []);
@@ -553,6 +504,30 @@ export const MechanicDashboard: React.FC = () => {
     return () => unsubscribe();
   }, [user, navigate]);
 
+  // Monitor for New Jobs and Send Notifications
+  useEffect(() => {
+      if (isLoading) return;
+
+      const previousIds = new Set(prevRequestsRef.current.map(r => r.id));
+      const newJobs = requests.filter(r => r.status === 'NEW' && !previousIds.has(r.id));
+
+      if (newJobs.length > 0 && isOnline) {
+          notify("New Job Alert", `${newJobs.length} new job(s) available nearby.`);
+          
+          // Try browser notification
+          if ('Notification' in window && Notification.permission === 'granted') {
+             new Notification('MechanicNow', { 
+                 body: `New Job: ${newJobs[0].vehicle} - ${newJobs[0].issue}`,
+                 icon: '/vite.svg'
+             });
+          } else if ('Notification' in window && Notification.permission !== 'denied') {
+              Notification.requestPermission();
+          }
+      }
+      
+      prevRequestsRef.current = requests;
+  }, [requests, isLoading, isOnline, notify]);
+
   const activeJob = requests.find(r => r.id === selectedJobId);
 
   // GPS Broadcaster: Whenever an active job is in progress or en-route, track position
@@ -569,7 +544,7 @@ export const MechanicDashboard: React.FC = () => {
                     api.mechanic.updateLocation(activeJob.id, pos.coords.latitude, pos.coords.longitude);
                 },
                 (err) => console.error(err),
-                { enableHighAccuracy: true, maximumAge: 10000, timeout: 5000 }
+                { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
             );
         }
     }
@@ -589,11 +564,17 @@ export const MechanicDashboard: React.FC = () => {
       const newState = !isOnline;
       setIsOnline(newState);
       await api.mechanic.updateStatus(newState);
+      if (newState) {
+          notify("You are Online", "Waiting for job requests...");
+      } else {
+          notify("You are Offline", "You will not receive new job requests.");
+      }
   };
   
   const handleSaveProfile = () => {
-      notify("Profile Saved", "Your mechanic profile has been updated.");
-      // In real app: api.mechanic.updateProfile({ bio: profileBio, yearsExperience: profileExp });
+      // In real app, we would save schedule too
+      notify("Profile Saved", "Your mechanic profile and schedule have been updated.");
+      // api.mechanic.updateProfile({ bio: profileBio, yearsExperience: profileExp, schedule });
   };
 
   const handleAcceptJob = async (id: string, e?: React.MouseEvent) => {
@@ -603,14 +584,18 @@ export const MechanicDashboard: React.FC = () => {
   };
 
   const handleConfirmNavigation = async (startNav: boolean) => {
-    if (!navPromptJob) return;
-    const updatedJob = { ...navPromptJob, status: 'ACCEPTED' as const, mechanicId: user?.id };
+    if (!navPromptJob || !user) return;
+    const updatedJob: JobRequest = { ...navPromptJob, status: 'ACCEPTED', mechanicId: user.id };
+    
     setRequests(prev => prev.map(r => r.id === navPromptJob.id ? updatedJob : r));
     setNavPromptJob(null);
+    
     if (startNav && updatedJob.location) {
         window.open(`https://www.google.com/maps/search/?api=1&query=${updatedJob.location.lat},${updatedJob.location.lng}`, '_blank');
     }
     await api.mechanic.updateJobRequest(updatedJob);
+    
+    notify("Job Accepted", "Customer has been notified that you are en route.");
   };
 
   const handleStatusUpdate = async (id: string, newStatus: JobRequest['status']) => {
@@ -619,6 +604,10 @@ export const MechanicDashboard: React.FC = () => {
       const updatedJob = { ...job, status: newStatus };
       setRequests(prev => prev.map(r => r.id === id ? updatedJob : r));
       await api.mechanic.updateJobRequest(updatedJob);
+      
+      if (newStatus === 'ARRIVED') {
+          notify("Status Updated", "Customer notified of arrival.");
+      }
   };
 
   const handleCompleteJobClick = (id: string) => {
@@ -626,20 +615,49 @@ export const MechanicDashboard: React.FC = () => {
       setShowCompletionModal(true);
   };
 
-  const handleCashOut = () => {
+  const handleCashOut = async () => {
     setIsCashOutProcessing(true);
-    setTimeout(() => {
+    try {
+        await api.mechanic.payoutToBank(earningsStats.week);
+        notify("Payout Initiated", `$${earningsStats.week.toFixed(2)} is on its way to your bank.`);
+    } catch(e) {
+        notify("Error", "Payout failed. Please try again.");
+    } finally {
         setIsCashOutProcessing(false);
-        notify("Transfer Initiated", `$${earningsStats.week.toFixed(2)} is being processed to your bank.`);
-    }, 2000);
+    }
   };
   
   const handleStripeConnect = async () => {
       setIsOnboardingStripe(true);
       try {
-          await api.mechanic.onboardStripe();
-          setIsStripeConnected(true);
-          notify("Success", "Payouts Setup Successfully!");
+          // 1. Get OAuth Link
+          const { url } = await api.mechanic.createStripeConnectAccount();
+          
+          // 2. Simulate opening window (in real app, this redirects)
+          const width = 600;
+          const height = 700;
+          const left = window.screen.width / 2 - width / 2;
+          const top = window.screen.height / 2 - height / 2;
+          
+          // Open a popup to simulate the flow
+          const popup = window.open(url, "Stripe Connect", `width=${width},height=${height},top=${top},left=${left}`);
+          
+          // 3. Poll for completion or simulate it
+          if (popup) {
+              setTimeout(() => {
+                  popup.close();
+                  api.mechanic.onboardStripe('mock_code').then(() => {
+                      setIsStripeConnected(true);
+                      notify("Success", "Stripe Express Account Connected!");
+                  });
+              }, 3000); // Simulate user filling out Stripe form
+          } else {
+              // Popup blocked, just do it inline for demo
+               await api.mechanic.onboardStripe('mock_code');
+               setIsStripeConnected(true);
+               notify("Success", "Stripe Express Account Connected!");
+          }
+
       } catch(e) {
           notify("Error", "Failed to connect Stripe.");
       } finally {
@@ -658,14 +676,6 @@ export const MechanicDashboard: React.FC = () => {
       const customerTotal = baseLabor + partsCost;
       const platformFee = baseLabor * 0.20;
       const mechanicNet = customerTotal - platformFee;
-
-      // Optimistic UI Update for Earnings
-      const newStats = {
-        today: earningsStats.today + mechanicNet,
-        week: earningsStats.week + mechanicNet,
-        month: earningsStats.month + mechanicNet
-      };
-      setEarningsStats(newStats);
       
       const updatedJob: JobRequest = { 
           ...job, 
@@ -692,6 +702,9 @@ export const MechanicDashboard: React.FC = () => {
       
       await api.mechanic.updateJobRequest(updatedJob);
       await api.mechanic.updateEarnings(mechanicNet);
+      
+      setShowCompletionModal(false);
+      notify("Job Completed", `You earned $${mechanicNet.toFixed(2)}!`);
   };
 
   const handleCloseCompletionModal = () => {
@@ -711,17 +724,20 @@ export const MechanicDashboard: React.FC = () => {
   }, [requests, filterStatus]);
 
   return (
-    <div className="flex h-screen bg-slate-50 overflow-hidden pt-20">
-        <div className="w-20 md:w-64 bg-white border-r border-slate-200 flex flex-col justify-between flex-shrink-0 transition-all duration-300">
+    <div className="flex h-screen bg-slate-50 overflow-hidden pt-[calc(5rem+env(safe-area-inset-top))]">
+        <div className="w-20 md:w-64 bg-white border-r border-slate-200 flex flex-col justify-between flex-shrink-0 transition-all duration-300 pb-[env(safe-area-inset-bottom)]">
             <div className="p-4 space-y-2">
                 <button onClick={() => setActiveTab('requests')} className={`w-full p-3 rounded-xl flex items-center gap-3 ${activeTab === 'requests' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-gray-50'}`}>
                     <Wrench size={24} /><span className="hidden md:block font-medium">Jobs</span>
                 </button>
                 <button onClick={() => setActiveTab('map')} className={`w-full p-3 rounded-xl flex items-center gap-3 ${activeTab === 'map' ? 'bg-purple-50 text-purple-600' : 'text-slate-500 hover:bg-gray-50'}`}>
-                    <Map size={24} /><span className="hidden md:block font-medium">Map View</span>
+                    <MapIcon size={24} /><span className="hidden md:block font-medium">Map View</span>
                 </button>
                 <button onClick={() => setActiveTab('earnings')} className={`w-full p-3 rounded-xl flex items-center gap-3 ${activeTab === 'earnings' ? 'bg-green-50 text-green-600' : 'text-slate-500 hover:bg-gray-50'}`}>
                     <DollarSign size={24} /><span className="hidden md:block font-medium">Earnings</span>
+                </button>
+                <button onClick={() => setActiveTab('history')} className={`w-full p-3 rounded-xl flex items-center gap-3 ${activeTab === 'history' ? 'bg-amber-50 text-amber-600' : 'text-slate-500 hover:bg-gray-50'}`}>
+                    <ClipboardList size={24} /><span className="hidden md:block font-medium">History</span>
                 </button>
                 <button onClick={() => setActiveTab('profile')} className={`w-full p-3 rounded-xl flex items-center gap-3 ${activeTab === 'profile' ? 'bg-slate-100 text-slate-800' : 'text-slate-500 hover:bg-gray-50'}`}>
                     <User size={24} /><span className="hidden md:block font-medium">Profile</span>
@@ -763,7 +779,7 @@ export const MechanicDashboard: React.FC = () => {
                                 ))}
                             </div>
                         </div>
-                        <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50">
+                        <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50 pb-[env(safe-area-inset-bottom)]">
                             {visibleRequests.length === 0 && (
                                 <div className="text-center py-8 text-slate-400">
                                     <p className="text-sm">No jobs found.</p>
@@ -808,8 +824,16 @@ export const MechanicDashboard: React.FC = () => {
                             mechanicLocation={mechanicLocation}
                         />
                         {activeJob && !showCompletionModal && (
-                            <div className="absolute bottom-6 left-6 right-6 md:left-auto md:right-6 md:w-96 bg-white rounded-3xl shadow-2xl p-6 animate-slide-up border border-slate-100 z-10">
-                                <h2 className="text-xl font-bold mb-4">{activeJob.customerName}</h2>
+                            <div className="absolute bottom-6 left-6 right-6 md:left-auto md:right-6 md:w-96 bg-white rounded-3xl shadow-2xl p-6 animate-slide-up border border-slate-100 z-10" style={{ marginBottom: 'env(safe-area-inset-bottom)' }}>
+                                <div className="flex justify-between items-center mb-4">
+                                    <h2 className="text-xl font-bold">{activeJob.customerName}</h2>
+                                    <button 
+                                        onClick={() => setChatJob(activeJob)}
+                                        className="p-2 bg-blue-50 text-blue-600 rounded-full hover:bg-blue-100 transition-colors"
+                                    >
+                                        <MessageSquare size={20} />
+                                    </button>
+                                </div>
                                 <div className="flex gap-4">
                                     {activeJob.status === 'NEW' ? (
                                         <button onClick={() => handleAcceptJob(activeJob.id)} className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-bold">Accept Job</button>
@@ -831,7 +855,6 @@ export const MechanicDashboard: React.FC = () => {
             
             {activeTab === 'map' && (
                 <div className="flex-1 bg-gray-100 relative flex flex-col h-full">
-                    {/* Map Header/Overlay */}
                     <div className="absolute top-4 left-4 z-10 bg-white/90 backdrop-blur px-4 py-2 rounded-full shadow-sm border border-slate-200 text-xs font-bold text-slate-600 flex items-center gap-2">
                         <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
                         Live Job Map
@@ -844,9 +867,8 @@ export const MechanicDashboard: React.FC = () => {
                         mechanicLocation={mechanicLocation}
                     />
 
-                    {/* Floating Card for Selected Job */}
                     {activeJob && !showCompletionModal && (
-                        <div className="absolute bottom-6 left-6 right-6 md:left-auto md:right-6 md:w-96 bg-white rounded-3xl shadow-2xl p-6 animate-slide-up border border-slate-100 z-10">
+                        <div className="absolute bottom-6 left-6 right-6 md:left-auto md:right-6 md:w-96 bg-white rounded-3xl shadow-2xl p-6 animate-slide-up border border-slate-100 z-10" style={{ marginBottom: 'env(safe-area-inset-bottom)' }}>
                              <div className="flex justify-between items-start mb-2">
                                 <div>
                                     <h2 className="text-xl font-bold text-slate-900">{activeJob.customerName}</h2>
@@ -862,7 +884,10 @@ export const MechanicDashboard: React.FC = () => {
                                  {activeJob.status === 'NEW' ? (
                                      <button onClick={() => handleAcceptJob(activeJob.id)} className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-bold shadow-lg shadow-blue-200">Accept Job</button>
                                  ) : (
-                                     <button onClick={() => setActiveTab('requests')} className="flex-1 bg-slate-100 text-slate-700 py-3 rounded-xl font-bold hover:bg-slate-200">View Details</button>
+                                     <div className="flex gap-2 w-full">
+                                         <button onClick={() => setChatJob(activeJob)} className="p-3 bg-blue-50 text-blue-600 rounded-xl"><MessageSquare size={20}/></button>
+                                         <button onClick={() => setActiveTab('requests')} className="flex-1 bg-slate-100 text-slate-700 py-3 rounded-xl font-bold hover:bg-slate-200">View Details</button>
+                                     </div>
                                  )}
                              </div>
                         </div>
@@ -870,8 +895,66 @@ export const MechanicDashboard: React.FC = () => {
                 </div>
             )}
             
+            {activeTab === 'history' && (
+                <div className="p-8 max-w-5xl mx-auto w-full overflow-y-auto pb-[env(safe-area-inset-bottom)]">
+                    <h2 className="text-3xl font-bold text-slate-900 mb-2">Service History</h2>
+                    <p className="text-slate-500 mb-8">A record of all your completed repairs.</p>
+
+                    <div className="space-y-4">
+                        {completedJobs.length === 0 ? (
+                            <div className="text-center py-12 bg-white rounded-3xl border border-slate-100">
+                                <p className="text-slate-400">No completed jobs yet.</p>
+                            </div>
+                        ) : (
+                            completedJobs.map(job => (
+                                <div key={job.id} className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-all">
+                                    <div className="flex justify-between items-start mb-4">
+                                        <div>
+                                            <h3 className="text-lg font-bold text-slate-900">{job.vehicle}</h3>
+                                            <p className="text-slate-500 text-sm">{job.customerName}</p>
+                                        </div>
+                                        <div className="text-right">
+                                            <span className="block text-2xl font-bold text-green-600">
+                                                ${(job.priceBreakdown?.mechanicPayout || 0).toFixed(2)}
+                                            </span>
+                                            <span className="text-xs text-slate-400 uppercase tracking-wider">Earned</span>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="bg-slate-50 p-4 rounded-xl space-y-3 text-sm">
+                                        <div>
+                                            <span className="font-bold text-slate-700 block mb-1">Service Performed</span>
+                                            <p className="text-slate-600">{job.completionDetails?.description || job.issue}</p>
+                                        </div>
+                                        
+                                        {job.completionDetails?.parts && (
+                                            <div>
+                                                <span className="font-bold text-slate-700 block mb-1">Parts Used</span>
+                                                <p className="text-slate-600">{job.completionDetails.parts}</p>
+                                            </div>
+                                        )}
+
+                                        {job.completionDetails?.notes && (
+                                            <div>
+                                                <span className="font-bold text-slate-700 block mb-1">Mechanic Notes</span>
+                                                <p className="text-slate-500 italic">"{job.completionDetails.notes}"</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                    
+                                    <div className="mt-4 flex justify-between items-center text-xs text-slate-400 pt-4 border-t border-slate-100">
+                                        <span>Job ID: {job.id}</span>
+                                        <span>Completed: {new Date().toLocaleDateString()}</span> 
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </div>
+            )}
+
             {activeTab === 'profile' && (
-                 <div className="p-8 max-w-4xl mx-auto w-full overflow-y-auto">
+                 <div className="p-8 max-w-4xl mx-auto w-full overflow-y-auto pb-[env(safe-area-inset-bottom)]">
                     <h2 className="text-3xl font-bold text-slate-900 mb-2">Mechanic Profile</h2>
                     <p className="text-slate-500 mb-8">Manage your public presence and settings.</p>
 
@@ -928,6 +1011,42 @@ export const MechanicDashboard: React.FC = () => {
                                     <button className="text-blue-600 text-sm font-bold hover:underline ml-2">+ Edit Skills</button>
                                 </div>
                             </div>
+
+                            {/* Schedule Editor */}
+                            <div className="pt-6 border-t border-slate-100">
+                                <h3 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2"><Calendar size={18} /> Availability & Schedule</h3>
+                                <div className="space-y-3">
+                                    {Object.keys(schedule).map((day) => (
+                                        <div key={day} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
+                                            <div className="flex items-center gap-3">
+                                                <button 
+                                                    onClick={() => setSchedule(prev => ({ ...prev, [day]: { ...prev[day], active: !prev[day].active } }))}
+                                                    className={`w-10 h-6 rounded-full relative transition-colors ${schedule[day].active ? 'bg-green-500' : 'bg-slate-300'}`}
+                                                >
+                                                    <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all shadow-sm ${schedule[day].active ? 'left-5' : 'left-1'}`}></div>
+                                                </button>
+                                                <span className="text-sm font-bold capitalize text-slate-700 w-24">{day}</span>
+                                            </div>
+                                            
+                                            <div className={`flex items-center gap-2 ${!schedule[day].active ? 'opacity-40 pointer-events-none' : ''}`}>
+                                                <input 
+                                                    type="time" 
+                                                    className="p-1 rounded border border-slate-300 text-xs bg-white"
+                                                    value={schedule[day].start}
+                                                    onChange={(e) => setSchedule(prev => ({ ...prev, [day]: { ...prev[day], start: e.target.value } }))}
+                                                />
+                                                <span className="text-slate-400">-</span>
+                                                <input 
+                                                    type="time" 
+                                                    className="p-1 rounded border border-slate-300 text-xs bg-white"
+                                                    value={schedule[day].end}
+                                                    onChange={(e) => setSchedule(prev => ({ ...prev, [day]: { ...prev[day], end: e.target.value } }))}
+                                                />
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
                         </div>
                         
                         <div className="mt-8 pt-8 border-t border-slate-100 flex justify-end">
@@ -940,7 +1059,7 @@ export const MechanicDashboard: React.FC = () => {
             )}
 
             {activeTab === 'earnings' && (
-                <div className="p-8 max-w-5xl mx-auto w-full overflow-y-auto">
+                <div className="p-8 max-w-5xl mx-auto w-full overflow-y-auto pb-[env(safe-area-inset-bottom)]">
                     <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
                         <div>
                             <h2 className="text-3xl font-bold text-slate-900">Earnings & Payouts</h2>
@@ -961,117 +1080,86 @@ export const MechanicDashboard: React.FC = () => {
                                 disabled={isOnboardingStripe}
                                 className="bg-slate-900 text-white px-8 py-4 rounded-xl font-bold shadow-lg hover:bg-slate-800 disabled:opacity-50 flex items-center gap-3 transition-all active:scale-95"
                             >
-                                {isOnboardingStripe ? <Loader2 className="animate-spin" /> : <><Link2 size={20}/> Setup Payouts with Stripe</>}
+                                {isOnboardingStripe ? <Loader2 className="animate-spin" /> : <><Link2 size={20}/> Connect Stripe Express</>}
                             </button>
                         )}
                     </div>
                     
                     {!isStripeConnected && (
-                        <div className="mb-8 bg-blue-50 border border-blue-100 p-6 rounded-2xl flex items-start gap-4">
-                            <div className="p-3 bg-white rounded-xl text-blue-600 shadow-sm"><Banknote size={24} /></div>
-                            <div>
-                                <h3 className="text-lg font-bold text-slate-900 mb-1">Get Paid Faster</h3>
-                                <p className="text-slate-600 text-sm mb-4">Connect your bank account via Stripe to receive instant payouts for completed jobs. This is required to start cashing out your earnings.</p>
+                        <div className="mb-8 bg-indigo-600 text-white p-6 rounded-3xl shadow-xl relative overflow-hidden border border-indigo-500">
+                            <div className="absolute right-0 top-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
+                            <div className="flex items-start gap-6 relative z-10">
+                                <div className="p-4 bg-white/20 backdrop-blur rounded-2xl shadow-inner">
+                                    <Banknote size={32} />
+                                </div>
+                                <div className="flex-1">
+                                    <h3 className="text-xl font-bold mb-2">Get Paid Faster with Stripe Express</h3>
+                                    <p className="text-indigo-100 text-sm mb-4 max-w-lg leading-relaxed">
+                                        Link your bank account or debit card to receive instant payouts for completed jobs. Securely managed by Stripe Connect for gig workers.
+                                    </p>
+                                    <button onClick={handleStripeConnect} className="bg-white text-indigo-600 px-6 py-2 rounded-lg font-bold text-sm hover:bg-indigo-50">
+                                        Setup Payouts
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     )}
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-                        <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm relative overflow-hidden group hover:shadow-md transition-all">
-                            <p className="text-slate-500 font-medium mb-1">Available Balance</p>
-                            <h3 className="text-3xl font-bold text-slate-900">${earningsStats.week.toFixed(2)}</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
+                            <p className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-2">Today</p>
+                            <p className="text-3xl font-bold text-slate-900">${earningsStats.today.toFixed(2)}</p>
                         </div>
-                        <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm relative overflow-hidden group hover:shadow-md transition-all">
-                            <p className="text-slate-500 font-medium mb-1">Today's Earnings</p>
-                            <h3 className="text-3xl font-bold text-slate-900">${earningsStats.today.toFixed(2)}</h3>
+                        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
+                            <p className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-2">This Week</p>
+                            <p className="text-3xl font-bold text-slate-900">${earningsStats.week.toFixed(2)}</p>
                         </div>
-                        <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-3xl p-6 text-white shadow-xl">
-                            <p className="text-slate-300 font-medium mb-1">Total Lifetime</p>
-                            <h3 className="text-3xl font-bold text-white">${earningsStats.month.toFixed(2)}</h3>
+                        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
+                            <p className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-2">This Month</p>
+                            <p className="text-3xl font-bold text-slate-900">${earningsStats.month.toFixed(2)}</p>
                         </div>
-                    </div>
-
-                    <h3 className="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2">
-                        <CheckCircle className="text-green-500" size={20} /> Payment History
-                    </h3>
-                    <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
-                        {completedJobs.length === 0 ? (
-                            <div className="p-10 text-center text-slate-500 flex flex-col items-center gap-3">
-                                <div className="p-3 bg-slate-50 rounded-full"><FileText size={24} /></div>
-                                <p>No completed jobs found.</p>
-                            </div>
-                        ) : (
-                            completedJobs.map(job => {
-                                const subtotal = job.priceBreakdown?.subtotal || job.payout;
-                                const fee = job.priceBreakdown?.platformFee || 0;
-                                const payout = job.priceBreakdown?.mechanicPayout || 0;
-                                const paymentType = job.completionDetails?.collectedPaymentMethod || 'CARD';
-                                const isCash = paymentType === 'CASH'; 
-                                const partsCost = job.completionDetails?.partsCost || 0;
-                                const estimatedProfit = payout - partsCost;
-
-                                return (
-                                    <div key={job.id} className="p-6 border-b border-slate-50 hover:bg-slate-50 transition-colors">
-                                        <div className="flex flex-col md:flex-row justify-between gap-6 mb-4">
-                                            <div>
-                                                <h4 className="font-bold text-slate-900 text-lg">{job.customerName}</h4>
-                                                <p className="text-sm text-slate-500 font-medium">{job.vehicle}</p>
-                                                <p className="text-xs text-slate-400 mt-1">Service: {job.completionDetails?.description || job.issue}</p>
-                                                <div className="flex items-center gap-2 mt-2">
-                                                    <span className={`text-xs px-2 py-0.5 rounded font-bold ${isCash ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}`}>
-                                                        {isCash ? 'Cash/External Payment' : 'Paid via App'}
-                                                    </span>
-                                                    <span className="text-xs text-slate-400">{new Date().toLocaleDateString()}</span>
-                                                </div>
-                                            </div>
-                                            
-                                            <div className="text-right">
-                                                <span className="block text-xs text-slate-400 font-medium uppercase">Net Payout</span>
-                                                <span className="text-2xl font-bold text-green-600">${payout.toFixed(2)}</span>
-                                            </div>
-                                        </div>
-
-                                        {/* Detailed Breakdown Box */}
-                                        <div className="bg-slate-50 rounded-xl p-4 border border-slate-100 text-sm">
-                                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                                <div className="col-span-2 md:col-span-1">
-                                                    <span className="block text-xs text-slate-400 mb-1">Parts Used</span>
-                                                    <span className="font-medium text-slate-700">{job.completionDetails?.parts || 'None'}</span>
-                                                </div>
-                                                
-                                                <div className="text-right md:text-left">
-                                                    <span className="block text-xs text-slate-400 mb-1">Customer Paid</span>
-                                                    <span className="font-medium text-slate-900">${(job.priceBreakdown?.total || 0).toFixed(2)}</span>
-                                                </div>
-
-                                                <div className="text-right md:text-left">
-                                                     <span className="block text-xs text-slate-400 mb-1">Platform Fee</span>
-                                                     <span className="font-medium text-red-400">-${fee.toFixed(2)}</span>
-                                                </div>
-
-                                                <div className="text-right md:text-left border-t md:border-t-0 pt-2 md:pt-0 mt-2 md:mt-0 col-span-2 md:col-span-1">
-                                                     <div className="flex justify-between md:block">
-                                                        <span className="block text-xs text-slate-400 mb-1">Real Profit (After Parts)</span>
-                                                        <span className={`font-bold ${estimatedProfit >= 0 ? 'text-slate-800' : 'text-red-500'}`}>
-                                                            ${estimatedProfit.toFixed(2)}
-                                                            {partsCost > 0 && <span className="text-xs font-normal text-slate-400 ml-1">(-${partsCost.toFixed(0)} parts exp)</span>}
-                                                        </span>
-                                                     </div>
-                                                </div>
-                                             </div>
-                                        </div>
-                                    </div>
-                                );
-                            })
-                        )}
                     </div>
                 </div>
             )}
-            
-            {chatJob && <JobChat job={chatJob} onClose={() => setChatJob(null)} />}
-            {navPromptJob && <NavigationModal job={navPromptJob} onClose={() => setNavPromptJob(null)} onConfirm={handleConfirmNavigation} />}
-            {showCompletionModal && activeJob && <CompletionModal job={activeJob} onClose={handleCloseCompletionModal} onProcessPayment={handleProcessPayment} />}
         </div>
+
+        {/* Navigation Prompt Modal */}
+        {navPromptJob && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                <div className="bg-white rounded-2xl p-6 max-w-sm w-full animate-scale-up">
+                    <h3 className="text-xl font-bold mb-2">Start Navigation?</h3>
+                    <p className="text-slate-500 mb-6 text-sm">Would you like to open maps to the customer's location?</p>
+                    <div className="flex gap-3">
+                        <button 
+                            onClick={() => handleConfirmNavigation(false)}
+                            className="flex-1 py-3 bg-slate-100 text-slate-700 font-bold rounded-xl"
+                        >
+                            No, Just Accept
+                        </button>
+                        <button 
+                            onClick={() => handleConfirmNavigation(true)}
+                            className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl flex items-center justify-center gap-2"
+                        >
+                            <Navigation size={16} /> Start Nav
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {/* Chat Modal */}
+        {chatJob && (
+            <JobChat job={chatJob} onClose={() => setChatJob(null)} />
+        )}
+
+        {/* Completion Modal */}
+        {showCompletionModal && activeJob && (
+            <CompletionModal 
+                job={activeJob} 
+                onClose={handleCloseCompletionModal} 
+                onComplete={handleProcessPayment}
+            />
+        )}
     </div>
   );
 };

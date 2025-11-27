@@ -3,7 +3,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useApp } from '../App';
 import { BookingStatus, Mechanic, ServiceItem, Vehicle, GeoLocation } from '../types';
-import { Phone, MessageSquare, CheckCircle, MapPin, ArrowLeft, Wrench, Star, Navigation } from 'lucide-react';
+import { Phone, MessageSquare, CheckCircle, MapPin, ArrowLeft, Wrench, Star, Navigation, Send, X, AlertTriangle, HelpCircle } from 'lucide-react';
 import { api } from '../services/api';
 
 const LiveMap = ({ mechanicPos, customerPos, rotation }: { mechanicPos: {x: number, y: number}, customerPos: {x: number, y: number}, rotation: number }) => {
@@ -28,12 +28,11 @@ const LiveMap = ({ mechanicPos, customerPos, rotation }: { mechanicPos: {x: numb
     const L = (window as any).L;
 
     // Update Customer Marker
-    // Convert 0-100 coord system to fake lat/lng offset for demo
     const cLat = 37.7749 + (customerPos.y - 50) * 0.0001;
     const cLng = -122.4194 + (customerPos.x - 50) * 0.0001;
     
-    // Mechanic Position logic (same fake projection)
-    const mLat = 37.7749 + (mechanicPos.y - 50) * 0.0001; // Inverted Y in map usually, but treating as direct offset here
+    // Mechanic Position logic
+    const mLat = 37.7749 + (mechanicPos.y - 50) * 0.0001; 
     const mLng = -122.4194 + (mechanicPos.x - 50) * 0.0001;
 
     if (!customerMarkerRef.current) {
@@ -64,19 +63,158 @@ const LiveMap = ({ mechanicPos, customerPos, rotation }: { mechanicPos: {x: numb
         mechanicMarkerRef.current = L.marker([mLat, mLng], { icon: carIcon }).addTo(leafletMap.current);
     } else {
         mechanicMarkerRef.current.setLatLng([mLat, mLng]);
-        // Update rotation logic if needed via direct DOM manipulation or icon update, 
-        // simplified here by re-creating icon on major rotation change would be better but expensive.
-        // For smoother rotation in Leaflet, usually requires a plugin like RotatedMarker. 
-        // We'll stick to position updates for now.
     }
 
     // Fit bounds to keep both in view
     const bounds = L.latLngBounds([cLat, cLng], [mLat, mLng]);
-    leafletMap.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
+    leafletMap.current.fitBounds(bounds, { padding: [100, 100], maxZoom: 16 });
 
   }, [mechanicPos, customerPos, rotation]);
 
   return <div ref={mapRef} className="w-full h-full bg-slate-200" />;
+};
+
+// Chat Component
+const CustomerChat = ({ mechanicName, jobId, onClose }: { mechanicName: string, jobId: string, onClose: () => void }) => {
+    const storageKey = `mn_chat_${jobId}`;
+    const [messages, setMessages] = useState<{id: string, sender: 'mechanic' | 'customer', text: string}[]>([]);
+    const [inputText, setInputText] = useState('');
+    const messagesEndRef = useRef<HTMLDivElement>(null);
+  
+    useEffect(() => {
+        // Initial load
+        const saved = localStorage.getItem(storageKey);
+        if (saved) setMessages(JSON.parse(saved));
+  
+        // Poll for updates (Simulating real-time socket)
+        const interval = setInterval(() => {
+            const current = localStorage.getItem(storageKey);
+            if (current) {
+                const parsed = JSON.parse(current);
+                if (parsed.length !== messages.length) {
+                    setMessages(parsed);
+                }
+            }
+        }, 1000);
+        return () => clearInterval(interval);
+    }, [storageKey]);
+  
+    useEffect(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, [messages]);
+  
+    const handleSend = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!inputText.trim()) return;
+        
+        const newMsg = { 
+            id: Date.now().toString(), 
+            sender: 'customer' as const, 
+            text: inputText, 
+            timestamp: Date.now() 
+        };
+        
+        const updatedMessages = [...messages, newMsg];
+        setMessages(updatedMessages);
+        localStorage.setItem(storageKey, JSON.stringify(updatedMessages));
+        setInputText('');
+    };
+  
+    return (
+      <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden flex flex-col h-[500px] animate-scale-up">
+              <div className="bg-slate-900 p-4 text-white flex justify-between items-center">
+                  <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center font-bold">
+                          {mechanicName.charAt(0)}
+                      </div>
+                      <div>
+                          <h3 className="font-bold">{mechanicName}</h3>
+                          <p className="text-xs text-slate-300">Mechanic</p>
+                      </div>
+                  </div>
+                  <button onClick={onClose} className="hover:bg-white/10 p-2 rounded-full transition-colors"><X size={20} /></button>
+              </div>
+              <div className="flex-1 bg-slate-50 p-4 overflow-y-auto space-y-4">
+                  {messages.length === 0 && (
+                      <p className="text-center text-slate-400 text-sm mt-4">Start conversation with {mechanicName}...</p>
+                  )}
+                  {messages.map(msg => (
+                      <div key={msg.id} className={`flex ${msg.sender === 'customer' ? 'justify-end' : 'justify-start'}`}>
+                          <div className={`max-w-[80%] p-3 rounded-2xl text-sm shadow-sm ${msg.sender === 'customer' ? 'bg-blue-600 text-white rounded-br-none' : 'bg-white border border-slate-200 text-slate-800 rounded-bl-none'}`}>
+                              {msg.text}
+                          </div>
+                      </div>
+                  ))}
+                  <div ref={messagesEndRef} />
+              </div>
+              <form onSubmit={handleSend} className="p-4 bg-white border-t border-slate-100 flex gap-2">
+                  <input 
+                    className="flex-1 bg-slate-100 rounded-xl pl-4 pr-4 py-3 outline-none focus:ring-2 focus:ring-blue-500" 
+                    placeholder="Type a message..." 
+                    value={inputText} 
+                    onChange={e => setInputText(e.target.value)} 
+                  />
+                  <button type="submit" className="p-3 bg-blue-600 text-white rounded-xl hover:bg-blue-500"><Send size={20} /></button>
+              </form>
+          </div>
+      </div>
+    );
+};
+
+// Support Modal
+const SupportModal = ({ onClose, jobId }: { onClose: () => void, jobId?: string }) => {
+    const [message, setMessage] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [sent, setSent] = useState(false);
+
+    const handleSubmit = async () => {
+        setIsSubmitting(true);
+        try {
+            await api.support.createTicket(jobId || 'general', 'Customer Issue Report', message);
+            setSent(true);
+        } catch(e) {
+            alert("Failed to send ticket.");
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fade-in">
+            <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl p-6">
+                {sent ? (
+                    <div className="text-center py-8">
+                        <CheckCircle size={48} className="text-green-500 mx-auto mb-4"/>
+                        <h3 className="text-xl font-bold text-slate-900">Issue Reported</h3>
+                        <p className="text-slate-500 mb-6">Our support team will contact you shortly.</p>
+                        <button onClick={onClose} className="w-full py-3 bg-slate-100 rounded-xl font-bold">Close</button>
+                    </div>
+                ) : (
+                    <>
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-xl font-bold text-slate-900 flex items-center gap-2"><AlertTriangle size={20} className="text-amber-500"/> Report Issue</h3>
+                            <button onClick={onClose}><X size={20} className="text-slate-400"/></button>
+                        </div>
+                        <p className="text-sm text-slate-500 mb-4">Please describe the problem with your current service.</p>
+                        <textarea 
+                            className="w-full p-3 border border-slate-200 rounded-xl h-32 mb-4 resize-none focus:ring-2 focus:ring-blue-500 outline-none"
+                            placeholder="Mechanic hasn't arrived..."
+                            value={message}
+                            onChange={e => setMessage(e.target.value)}
+                        />
+                        <button 
+                            onClick={handleSubmit} 
+                            disabled={!message || isSubmitting}
+                            className="w-full py-3 bg-slate-900 text-white rounded-xl font-bold disabled:opacity-50"
+                        >
+                            {isSubmitting ? "Sending..." : "Submit Report"}
+                        </button>
+                    </>
+                )}
+            </div>
+        </div>
+    );
 };
 
 export const Tracking: React.FC = () => {
@@ -86,14 +224,14 @@ export const Tracking: React.FC = () => {
     
     // Core Status
     const [status, setStatus] = useState<BookingStatus>(BookingStatus.PENDING);
+    const [showChat, setShowChat] = useState(false);
+    const [showSupport, setShowSupport] = useState(false);
     
     // Data from nav
     const bookingData = state as { jobId?: string, mechanic: Mechanic, vehicle: Vehicle, services: ServiceItem[], totalPrice: number, location: string, geoData?: GeoLocation } | null;
 
     // Positional Data
-    // We keep 'mechanicPos' as the smoothed visual position (0-100 coord system for easy lerp)
     const [mechanicPos, setMechanicPos] = useState({ x: 10, y: 10 });
-    // We keep 'targetMechanicPos' as the latest calculated position
     const [targetMechanicPos, setTargetMechanicPos] = useState({ x: 10, y: 10 });
     
     const [customerRealLoc, setCustomerRealLoc] = useState<GeoLocation | null>(state?.geoData || null); 
@@ -111,7 +249,7 @@ export const Tracking: React.FC = () => {
                 setCustomerRealLoc({ lat: pos.coords.latitude, lng: pos.coords.longitude });
             },
             (err) => console.warn("Location Access denied", err),
-            { enableHighAccuracy: true, maximumAge: 2000, timeout: 5000 }
+            { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
         );
 
         return () => navigator.geolocation.clearWatch(watchId);
@@ -136,7 +274,7 @@ export const Tracking: React.FC = () => {
                     if (newStatus === BookingStatus.ARRIVED) notify('Mechanic Arrived', 'Meet them at your vehicle.');
                     if (newStatus === BookingStatus.IN_PROGRESS) notify('Work Started', 'Your mechanic is working.');
                     if (newStatus === BookingStatus.COMPLETED) {
-                         // ... completion logic ...
+                         // Play success sound logic here if desired
                     }
                 }
                 return newStatus;
@@ -153,30 +291,10 @@ export const Tracking: React.FC = () => {
 
     // 3. Coordinate Projection 
     useEffect(() => {
-        // Simplified projection: center map is 50,50. 
-        // 1 deg lat/lng = ~3000 units on our 0-100 scale? 
-        // Actually, for the Leaflet implementation above, we pass raw 0-100 coords and it converts them to small lat/lng offsets.
-        // We just need to animate x/y smoothly.
-        
-        if (useRealGps.current && driverRealLoc && customerRealLoc) {
-             // If real GPS is available, we map relative differences.
-             // But honestly, mixing real GPS with a 0-100 lerp system is complex.
-             // For this demo, let's keep the target pos logic abstract (0-100) and let the Map component project it.
-             
-             // If driver is approaching...
-             // We can just simulate movement towards 50,50 for visual effect unless we fully switch to real lat/lng state.
-             // For robust "Real Maps", normally we'd pass lat/lng directly to the map component.
-             // But to keep the lerp animation smooth without rewriting the whole state machine:
-             
-             // Let's assume 50,50 is customer.
-             // Driver starts at 10,10.
-             // We'll update target based on status.
-        } 
-        
         if (status === BookingStatus.CONFIRMED || status === BookingStatus.EN_ROUTE) {
-            setTargetMechanicPos({ x: 50, y: 50 }); // Move to center
+            setTargetMechanicPos({ x: 50, y: 50 }); // Move to center visual logic
         }
-    }, [driverRealLoc, customerRealLoc, status]);
+    }, [status]);
 
 
     // 4. Smooth Animation Loop (Lerp)
@@ -225,8 +343,18 @@ export const Tracking: React.FC = () => {
             <button 
                 onClick={() => navigate('/')}
                 className="absolute top-6 left-6 z-50 w-10 h-10 bg-white rounded-full shadow-md flex items-center justify-center text-slate-700 hover:bg-gray-50"
+                style={{ marginTop: 'env(safe-area-inset-top)' }}
             >
                 <ArrowLeft size={20} />
+            </button>
+            
+            <button 
+                onClick={() => setShowSupport(true)}
+                className="absolute top-6 right-6 z-50 w-10 h-10 bg-white rounded-full shadow-md flex items-center justify-center text-slate-700 hover:bg-gray-50"
+                style={{ marginTop: 'env(safe-area-inset-top)' }}
+                title="Report Issue"
+            >
+                <HelpCircle size={20} />
             </button>
 
             <div className="absolute inset-0 z-0">
@@ -238,8 +366,8 @@ export const Tracking: React.FC = () => {
             </div>
 
             {/* Status Card */}
-            <div className="relative z-10 flex-1 flex flex-col justify-between pointer-events-none">
-                <div className="pt-24 px-4 pointer-events-auto flex flex-col items-center">
+            <div className="relative z-10 flex-1 flex flex-col justify-between pointer-events-none pb-[env(safe-area-inset-bottom)]">
+                <div className="pt-24 px-4 pointer-events-auto flex flex-col items-center" style={{ paddingTop: 'calc(6rem + env(safe-area-inset-top))' }}>
                     <div className="bg-slate-900 text-white p-5 rounded-2xl shadow-xl w-full max-w-sm transform transition-all hover:scale-[1.02] border border-slate-700">
                         <div className="flex justify-between items-start mb-4">
                             <div>
@@ -289,7 +417,10 @@ export const Tracking: React.FC = () => {
                                 </div>
                             </div>
                             <div className="flex gap-2">
-                                <button className="w-11 h-11 rounded-full bg-gray-50 flex items-center justify-center text-slate-700 hover:bg-gray-100 transition-colors border border-gray-100">
+                                <button 
+                                    onClick={() => setShowChat(true)}
+                                    className="w-11 h-11 rounded-full bg-gray-50 flex items-center justify-center text-slate-700 hover:bg-gray-100 transition-colors border border-gray-100 relative"
+                                >
                                     <MessageSquare size={20} />
                                 </button>
                                 <a href={`tel:5555555555`} className="w-11 h-11 rounded-full bg-blue-600 flex items-center justify-center text-white hover:bg-blue-500 transition-colors shadow-lg shadow-blue-200">
@@ -336,6 +467,18 @@ export const Tracking: React.FC = () => {
                     </div>
                 </div>
             </div>
+
+            {showChat && bookingData.jobId && (
+                <CustomerChat 
+                    mechanicName={bookingData.mechanic.name} 
+                    jobId={bookingData.jobId} 
+                    onClose={() => setShowChat(false)} 
+                />
+            )}
+            
+            {showSupport && (
+                <SupportModal onClose={() => setShowSupport(false)} jobId={bookingData.jobId} />
+            )}
         </div>
     );
 };

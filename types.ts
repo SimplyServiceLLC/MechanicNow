@@ -3,7 +3,8 @@
 export enum ServiceType {
   MAINTENANCE = 'MAINTENANCE',
   REPAIR = 'REPAIR',
-  DIAGNOSTIC = 'DIAGNOSTIC'
+  DIAGNOSTIC = 'DIAGNOSTIC',
+  ROADSIDE = 'ROADSIDE'
 }
 
 export enum BookingStatus {
@@ -50,6 +51,10 @@ export interface Review {
   date: string;
 }
 
+export interface MechanicSchedule {
+  [key: string]: { start: string; end: string; active: boolean }; // key: 'monday', 'tuesday', etc.
+}
+
 export interface Mechanic {
   id: string;
   name: string;
@@ -66,6 +71,7 @@ export interface Mechanic {
   specialties?: string[];
   reviews?: Review[];
   certifications?: string[];
+  schedule?: MechanicSchedule;
 }
 
 export interface MechanicRegistrationData {

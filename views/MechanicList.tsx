@@ -1,8 +1,8 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Star, Clock, Award, ShieldCheck, ArrowLeft, MapPin as MapPinIcon, ChevronRight, CheckCircle, Zap, Calendar, Loader2, CreditCard, Banknote, X, Wrench, Wallet } from 'lucide-react';
-import { Vehicle, ServiceItem, Mechanic, JobRequest, PriceBreakdown, PaymentMethod, GeoLocation } from '../types';
+import { Star, Clock, Award, ShieldCheck, ArrowLeft, MapPin as MapPinIcon, ChevronRight, CheckCircle, Zap, Calendar, Loader2, CreditCard, Banknote, X, Wrench, Wallet, Lock, FileText } from 'lucide-react';
+import { Vehicle, ServiceItem, Mechanic, JobRequest, PriceBreakdown, PaymentMethod, GeoLocation, ServiceType } from '../types';
 import { useApp } from '../App';
 import { api } from '../services/api';
 
@@ -11,6 +11,7 @@ const getAvailabilityColor = (status: string) => {
     case 'Available Now': return 'text-green-600';
     case 'On another job': return 'text-amber-600';
     case 'Offline': return 'text-slate-400';
+    case 'Unavailable': return 'text-red-500';
     default: return 'text-blue-600';
   }
 };
@@ -20,6 +21,7 @@ const getAvailabilityBg = (status: string) => {
     case 'Available Now': return 'bg-green-500';
     case 'On another job': return 'bg-amber-500';
     case 'Offline': return 'bg-slate-400';
+    case 'Unavailable': return 'bg-red-500';
     default: return 'bg-blue-500';
   }
 };
@@ -81,7 +83,18 @@ const MechanicProfileView = ({ mechanic, onBack, onBook, totalPrice }: { mechani
              </div>
          </div>
 
-         <div className="py-6">
+         {/* Warranty Badge */}
+         <div className="my-6 p-4 bg-gradient-to-r from-slate-900 to-slate-800 rounded-xl text-white flex items-center gap-4 shadow-lg shadow-slate-200">
+             <div className="p-3 bg-white/10 rounded-full backdrop-blur-sm">
+                 <ShieldCheck size={24} className="text-blue-400" />
+             </div>
+             <div>
+                 <h4 className="font-bold text-lg">12-Month / 12,000-Mile Warranty</h4>
+                 <p className="text-slate-300 text-xs">All services by {mechanic.name.split(' ')[0]} are fully backed by MechanicNow.</p>
+             </div>
+         </div>
+
+         <div className="py-4">
              <h3 className="font-bold text-slate-900 mb-2">About {mechanic.name.split(' ')[0]}</h3>
              <p className="text-slate-600 leading-relaxed text-sm">{mechanic.bio || "No bio available."}</p>
          </div>
@@ -150,11 +163,49 @@ const MechanicProfileView = ({ mechanic, onBack, onBook, totalPrice }: { mechani
             </div>
             <button 
               onClick={onBook}
-              disabled={mechanic.availability === 'Offline'}
+              disabled={mechanic.availability === 'Offline' || mechanic.availability === 'Unavailable'}
               className="flex-1 bg-blue-600 text-white py-4 rounded-xl font-bold hover:bg-blue-500 shadow-lg shadow-blue-200 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-                {mechanic.availability === 'Offline' ? 'Mechanic Offline' : 'Hire Mechanic'} <ChevronRight size={18} />
+                {mechanic.availability === 'Offline' || mechanic.availability === 'Unavailable' ? 'Mechanic Unavailable' : 'Hire Mechanic'} <ChevronRight size={18} />
             </button>
+        </div>
+    </div>
+  </div>
+);
+
+// Stripe Elements UI Simulation/Wrapper
+const StripeCardInput = () => (
+  <div className="bg-white p-4 rounded-xl border border-slate-200 focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 transition-all shadow-sm">
+    <div className="flex justify-between items-center mb-3">
+        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+            <Lock size={10} /> Secure Card Payment (Stripe)
+        </label>
+        <div className="flex gap-1">
+            <div className="w-8 h-5 bg-slate-100 rounded border border-slate-200 flex items-center justify-center"><span className="text-[6px] font-bold text-slate-400">VISA</span></div>
+            <div className="w-8 h-5 bg-slate-100 rounded border border-slate-200 flex items-center justify-center"><span className="text-[6px] font-bold text-slate-400">MC</span></div>
+        </div>
+    </div>
+    <div className="flex items-center gap-3">
+        <CreditCard size={20} className="text-slate-400 flex-shrink-0" />
+        <div className="flex-1 grid grid-cols-4 gap-4">
+            <input 
+                type="text" 
+                placeholder="Card number" 
+                className="col-span-2 outline-none text-sm text-slate-900 placeholder:text-slate-300 bg-transparent"
+                defaultValue="4242 4242 4242 4242"
+            />
+            <input 
+                type="text" 
+                placeholder="MM/YY" 
+                className="outline-none text-sm text-slate-900 placeholder:text-slate-300 bg-transparent text-center"
+                defaultValue="12/25"
+            />
+            <input 
+                type="text" 
+                placeholder="CVC" 
+                className="outline-none text-sm text-slate-900 placeholder:text-slate-300 bg-transparent text-center"
+                defaultValue="123"
+            />
         </div>
     </div>
   </div>
@@ -178,6 +229,7 @@ const BookingConfirmationView = ({ mechanic, vehicle, services, date, time, loca
     const [isEditingCart, setIsEditingCart] = useState(false);
     const [localServices, setLocalServices] = useState<ServiceItem[]>(services);
     const [paymentType, setPaymentType] = useState<'CARD' | 'CASH'>('CARD');
+    const [agreedToTerms, setAgreedToTerms] = useState(false);
 
     useEffect(() => {
         setLocalServices(services);
@@ -266,21 +318,21 @@ const BookingConfirmationView = ({ mechanic, vehicle, services, date, time, loca
                                     <span className="text-xs font-bold">Cash / Other</span>
                                 </button>
                             </div>
+                            
                             {paymentType === 'CARD' ? (
-                                <div className="p-3 bg-white rounded-xl border border-slate-200 flex items-center gap-3 shadow-sm">
-                                    <div className="bg-slate-100 p-2 rounded"><CreditCard size={16} className="text-slate-600"/></div>
-                                    <div className="flex-1 text-left">
-                                         <p className="text-xs font-bold text-slate-900">Visa ending in 4242</p>
-                                         <p className="text-[10px] text-slate-500">Expires 12/25</p>
+                                <div className="space-y-2">
+                                    <div className="bg-blue-50 border border-blue-100 p-3 rounded-xl text-xs text-blue-800 flex gap-2 items-start">
+                                        <Lock size={14} className="mt-0.5 flex-shrink-0" />
+                                        <span>Secured by Stripe Connect. Funds are held safely until the job is completed.</span>
                                     </div>
-                                    <button className="text-xs text-blue-600 font-bold hover:underline">Change</button>
+                                    <StripeCardInput />
                                 </div>
                             ) : (
                                 <div className="p-3 bg-white rounded-xl border border-slate-200 flex items-center gap-3 shadow-sm">
                                     <div className="bg-slate-100 p-2 rounded"><Banknote size={16} className="text-slate-600"/></div>
                                     <div className="flex-1 text-left">
                                          <p className="text-xs font-bold text-slate-900">Pay After Service</p>
-                                         <p className="text-[10px] text-slate-500">Zelle, Venmo, or Cash</p>
+                                         <p className="text-xs text-slate-500">Zelle, Venmo, or Cash</p>
                                     </div>
                                 </div>
                             )}
@@ -341,6 +393,36 @@ const BookingConfirmationView = ({ mechanic, vehicle, services, date, time, loca
                                 <span>${breakdown.total.toFixed(2)}</span>
                             </div>
                         </div>
+
+                        {/* Prominent Warranty Info */}
+                        <div className="mt-4 p-4 bg-amber-50 rounded-xl border border-amber-100 flex gap-3">
+                            <div className="p-2 bg-white rounded-full text-amber-500 shadow-sm border border-amber-100 h-fit">
+                                <ShieldCheck size={20} />
+                            </div>
+                            <div>
+                                <h4 className="font-bold text-amber-900 text-sm">12-Month / 12,000-Mile Warranty</h4>
+                                <p className="text-xs text-amber-800 leading-relaxed mt-1">
+                                    You're covered! MechanicNow guarantees this service for 12 months or 12,000 miles, whichever comes first.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Terms Agreement */}
+                    <div className="mt-4">
+                        <label className="flex items-start gap-3 cursor-pointer p-3 bg-slate-50 rounded-xl border border-slate-200 hover:bg-slate-100 transition-colors">
+                            <div className="relative flex items-center pt-0.5">
+                                <input 
+                                    type="checkbox" 
+                                    className="w-5 h-5 border-slate-300 rounded text-blue-600 focus:ring-2 focus:ring-blue-500 cursor-pointer" 
+                                    checked={agreedToTerms} 
+                                    onChange={e => setAgreedToTerms(e.target.checked)} 
+                                />
+                            </div>
+                            <span className="text-xs text-slate-600 leading-relaxed">
+                                I agree to the <a href="#/terms" target="_blank" className="text-blue-600 font-bold hover:underline">Terms of Service</a> and <a href="#/terms" target="_blank" className="text-blue-600 font-bold hover:underline">Liability Waiver</a>. I understand that MechanicNow connects me with independent contractors and is not directly responsible for vehicle repairs.
+                            </span>
+                        </label>
                     </div>
 
                     <div className="flex gap-4 pt-2">
@@ -353,8 +435,8 @@ const BookingConfirmationView = ({ mechanic, vehicle, services, date, time, loca
                         </button>
                         <button 
                             onClick={() => onConfirm({ id: 'pm_prod', type: paymentType, last4: '4242', brand: 'Visa' }, breakdown)} 
-                            disabled={isProcessing || localServices.length === 0}
-                            className="flex-[2] py-4 rounded-xl font-bold text-white bg-blue-600 hover:bg-blue-500 shadow-lg shadow-blue-200 transition-colors flex justify-center items-center gap-2 disabled:opacity-50"
+                            disabled={isProcessing || localServices.length === 0 || !agreedToTerms}
+                            className="flex-[2] py-4 rounded-xl font-bold text-white bg-blue-600 hover:bg-blue-500 shadow-lg shadow-blue-200 transition-colors flex justify-center items-center gap-2 disabled:opacity-50 disabled:bg-slate-300 disabled:shadow-none disabled:cursor-not-allowed"
                         >
                             {isProcessing ? <Loader2 className="animate-spin" /> : <><CheckCircle size={16} /> Book Appointment</>}
                         </button>
@@ -407,27 +489,54 @@ export const MechanicList: React.FC = () => {
     if (mechanics.length === 0) return [];
     
     const serviceKeywords = currentServices.map(s => s.name.toLowerCase().replace(/ replacement| repair| change| inspection/g, '').trim());
+    
+    // Helper to parse time "10:00 AM" to float 10.0
+    const parseTime = (timeStr: string) => {
+        const [time, modifier] = timeStr.split(' ');
+        let [hours, minutes] = time.split(':').map(Number);
+        if (modifier === 'PM' && hours !== 12) hours += 12;
+        if (modifier === 'AM' && hours === 12) hours = 0;
+        return hours + minutes / 60;
+    };
+
+    const requestedTime = parseTime(time);
+    const dayOfWeek = new Date(date).toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
 
     const scored = mechanics.map(mechanic => {
         let score = 0;
         let matchReason = '';
+        let effectiveAvailability = mechanic.availability;
+
+        // 0. Schedule Check
+        if (mechanic.schedule) {
+            const daySchedule = mechanic.schedule[dayOfWeek];
+            if (daySchedule) {
+                if (!daySchedule.active) {
+                    effectiveAvailability = 'Unavailable';
+                    score -= 50000; // Severe penalty for day off
+                } else {
+                    const start = parseTime(daySchedule.start);
+                    const end = parseTime(daySchedule.end);
+                    if (requestedTime < start || requestedTime > end) {
+                        effectiveAvailability = 'Unavailable';
+                        score -= 50000; // Severe penalty for outside hours
+                    }
+                }
+            }
+        }
 
         // 1. Rating & Reviews (HIGHEST PRIORITY)
-        // We want 4.9+ with many reviews to crush 5.0 with 1 review.
-        // Base Score = Rating * 10000
         score += (mechanic.rating * 10000);
-        
-        // Review Count Weighting: Logarithmic scale to prevent 1000 reviews from dwarfing 100, 
-        // but still giving significant weight to experience.
         const reviewCount = mechanic.reviews?.length || 0;
-        // e.g. 10 reviews = 2300 pts, 100 reviews = 4600 pts
         score += (Math.log(reviewCount + 1) * 1000); 
 
         // 2. Availability
-        if (mechanic.availability === 'Available Now') {
+        if (effectiveAvailability === 'Available Now') {
             score += 2000;
-        } else if (mechanic.availability === 'Offline') {
+        } else if (effectiveAvailability === 'Offline') {
             score -= 100000; // Bury offline
+        } else if (effectiveAvailability === 'Unavailable') {
+            score -= 100000; // Bury scheduled unavailable
         }
 
         // 3. Specialization
@@ -443,16 +552,17 @@ export const MechanicList: React.FC = () => {
 
         // 4. Match Reason Logic
         if (!matchReason) {
-            if (mechanic.rating >= 4.9 && reviewCount > 10) matchReason = 'Top Rated Pro';
+            if (effectiveAvailability === 'Unavailable') matchReason = 'Unavailable at selected time';
+            else if (mechanic.rating >= 4.9 && reviewCount > 10) matchReason = 'Top Rated Pro';
             else if (reviewCount > 50) matchReason = 'Most Experienced';
-            else if (mechanic.availability === 'Available Now') matchReason = 'Fastest Arrival';
+            else if (effectiveAvailability === 'Available Now') matchReason = 'Fastest Arrival';
         }
 
-        return { ...mechanic, score, matchReason };
+        return { ...mechanic, score, matchReason, availability: effectiveAvailability };
     });
 
     return scored.sort((a, b) => b.score - a.score);
-  }, [mechanics, currentServices]);
+  }, [mechanics, currentServices, date, time]);
 
 
   const handleBookClick = (mechanic: Mechanic) => {
@@ -465,6 +575,15 @@ export const MechanicList: React.FC = () => {
     setIsProcessing(true);
 
     try {
+        // 1. Create Payment Intent (if card)
+        if (paymentMethod?.type === 'CARD') {
+            // Pass mechanic ID to facilitate Stripe Connect destination charge/transfer
+            await api.payment.createPaymentIntent(breakdown.total * 100, 'usd', selectedMechanic.id);
+            // Simulate Stripe confirmation delay
+            await new Promise(r => setTimeout(r, 1000));
+        }
+
+        // 2. Create Job
         const jobId = `job_${Date.now()}`;
         const newJob: JobRequest = {
             id: jobId,
@@ -476,11 +595,11 @@ export const MechanicList: React.FC = () => {
             location: geoData, 
             status: 'NEW',
             payout: breakdown.total,
-            urgency: currentServices.some(s => s.type === 'REPAIR') ? 'HIGH' : 'NORMAL',
+            urgency: currentServices.some(s => s.type === ServiceType.REPAIR || s.type === ServiceType.ROADSIDE) ? 'HIGH' : 'NORMAL',
             mechanicId: selectedMechanic.id,
             paymentMethod: paymentMethod, 
             priceBreakdown: breakdown,
-            paymentStatus: 'PENDING'
+            paymentStatus: paymentMethod?.type === 'CARD' ? 'AUTHORIZED' : 'PENDING'
         };
 
         await api.mechanic.createJobRequest(newJob);
@@ -502,7 +621,7 @@ export const MechanicList: React.FC = () => {
         });
     } catch (error) {
         console.error(error);
-        notify('Error', 'Failed to confirm booking. Please try again.');
+        notify('Error', 'Failed to confirm booking. Please check payment details.');
         setIsProcessing(false);
     }
   };
@@ -567,7 +686,7 @@ export const MechanicList: React.FC = () => {
                         <div 
                             key={mechanic.id} 
                             onClick={() => setSelectedMechanic(mechanic)}
-                            className={`bg-white rounded-2xl p-6 shadow-sm border border-slate-100 hover:shadow-md transition-all hover:border-blue-300 cursor-pointer flex flex-col sm:flex-row gap-6 group ${mechanic.availability === 'Offline' ? 'opacity-70 bg-gray-50' : ''}`}
+                            className={`bg-white rounded-2xl p-6 shadow-sm border border-slate-100 hover:shadow-md transition-all hover:border-blue-300 cursor-pointer flex flex-col sm:flex-row gap-6 group ${mechanic.availability === 'Offline' || mechanic.availability === 'Unavailable' ? 'opacity-70 bg-gray-50' : ''}`}
                         >
                             <div className="flex-shrink-0 flex flex-col items-center sm:items-start">
                                 <img src={mechanic.avatar} alt={mechanic.name} className="w-16 h-16 rounded-full object-cover border-2 border-gray-100 mb-2 group-hover:border-blue-200 transition-colors" />
@@ -582,10 +701,15 @@ export const MechanicList: React.FC = () => {
                                 <div className="flex flex-wrap justify-between items-start mb-2 gap-2">
                                     <h3 className="text-xl font-bold text-slate-800 group-hover:text-blue-600 transition-colors">{mechanic.name} <span className="text-sm font-normal text-slate-400 ml-2 hidden sm:inline">Certified</span></h3>
                                     
-                                    {mechanic.availability !== 'Offline' && (idx === 0 || (mechanic as any).matchReason) && (
+                                    {mechanic.availability !== 'Offline' && mechanic.availability !== 'Unavailable' && (idx === 0 || (mechanic as any).matchReason) && (
                                         <span className={`text-xs px-2 py-1 rounded-full font-bold flex items-center gap-1 ${idx === 0 ? 'bg-green-100 text-green-700' : 'bg-blue-50 text-blue-600'}`}>
                                         {idx === 0 && <Zap size={12} fill="currentColor" />}
                                         {idx === 0 ? 'Best Match: ' : ''}{(mechanic as any).matchReason || 'Recommended'}
+                                        </span>
+                                    )}
+                                    {mechanic.availability === 'Unavailable' && (
+                                        <span className="text-xs px-2 py-1 rounded-full font-bold bg-red-100 text-red-600 flex items-center gap-1">
+                                            <Clock size={12} /> Not Available at {time}
                                         </span>
                                     )}
                                 </div>
@@ -640,12 +764,12 @@ export const MechanicList: React.FC = () => {
                             </div>
                         </div>
 
-                        <div className="bg-blue-50 p-4 rounded-xl mb-6">
+                        <div className="bg-blue-50 p-4 rounded-xl mb-6 border border-blue-100">
                             <h4 className="font-semibold text-blue-900 text-sm mb-2 flex items-center gap-2">
-                                <Award size={16} /> 12-Month / 12k Mile Warranty
+                                <Award size={16} /> 12-Month / 12,000-Mile Warranty
                             </h4>
                             <p className="text-xs text-blue-700">
-                                All services performed by MechanicNow partners are backed by our happiness guarantee.
+                                All services performed by MechanicNow partners are backed by our nationwide happiness guarantee.
                             </p>
                         </div>
                     </div>

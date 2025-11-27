@@ -1,3 +1,4 @@
+
 import { UserProfile, JobRequest, PaymentMethod, Mechanic, MechanicRegistrationData } from '../types';
 import * as firebaseApp from 'firebase/app';
 import * as firebaseAuth from 'firebase/auth';
@@ -13,7 +14,8 @@ const {
 } = firebaseAuth as any;
 type User = any;
 
-import { getFirestore, collection, getDocs, doc, updateDoc, setDoc, getDoc, deleteDoc, onSnapshot, query, limit, orderBy, where, increment, serverTimestamp } from 'firebase/firestore';
+import { getFirestore, collection, getDocs, doc, updateDoc, setDoc, getDoc, deleteDoc, onSnapshot, query, limit, orderBy, where, increment, serverTimestamp, addDoc } from 'firebase/firestore';
+import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 // --- FIREBASE CONFIGURATION ---
 // Ensure these are set in your .env file for Production
@@ -30,7 +32,7 @@ const firebaseConfig = {
 // Check if keys exist to determine mode
 const isFirebaseConfigured = !!(firebaseConfig.apiKey && firebaseConfig.projectId);
 
-let db: any, auth: any;
+let db: any, auth: any, storage: any;
 let connectionMode: 'MOCK' | 'REAL' = 'MOCK';
 
 if (isFirebaseConfigured) {
@@ -42,6 +44,7 @@ if (isFirebaseConfigured) {
       
     db = getFirestore(app);
     auth = getAuth(app);
+    storage = getStorage(app);
     
     // Lazy load analytics with safety check for named export vs default export
     if (typeof window !== 'undefined') {
@@ -127,10 +130,19 @@ const MockApi = {
     resetPassword: async (email: string) => { await delay(500); console.log(`[Mock] Password reset email sent to ${email}`); }
   },
   payment: {
-    // Mock Stripe Create Payment Intent
-    createPaymentIntent: async (amount: number, currency: string = 'usd') => {
-        await delay(500);
-        return { clientSecret: 'pi_mock_secret_12345', id: 'pi_mock_12345' };
+    // Mock Stripe Create Payment Intent with Connect logic
+    createPaymentIntent: async (amount: number, currency: string = 'usd', mechanicId?: string) => {
+        await delay(800);
+        
+        if (mechanicId) {
+            const fee = Math.round(amount * 0.20);
+            const transfer = amount - fee;
+            console.log(`%c[Stripe Connect] Creating PaymentIntent: ${(amount/100).toFixed(2)} ${currency}`, 'color: #635bff; font-weight: bold;');
+            console.log(`%c[Stripe Connect] Application Fee: ${(fee/100).toFixed(2)} ${currency}`, 'color: #ef4444;');
+            console.log(`%c[Stripe Connect] Transfer to Connected Acct (${mechanicId}): ${(transfer/100).toFixed(2)} ${currency}`, 'color: #10b981;');
+        }
+
+        return { clientSecret: 'pi_mock_secret_12345_secret_54321', id: 'pi_mock_12345' };
     },
     authorize: async (amount: number, method: PaymentMethod) => {
         await delay(1500);
@@ -140,6 +152,7 @@ const MockApi = {
     },
     capture: async (jobId: string, amount: number) => {
         await delay(1000);
+        console.log(`[Stripe Connect] Payment captured. $${amount} split between platform and connected account.`);
         return { success: true };
     }
   },
@@ -153,6 +166,20 @@ const MockApi = {
           // In real implementation, this would call a Cloud Function connecting to SendGrid
           console.log(`%c[SendGrid Email] To ${email}: ${subject}`, 'color: #3b82f6; font-weight: bold; padding: 4px; border: 1px solid #3b82f6; border-radius: 4px;');
           return true;
+      }
+  },
+  storage: {
+      uploadFile: async (file: File, path: string) => {
+          await delay(1500);
+          console.log(`[Mock Storage] Uploaded ${file.name} to ${path}`);
+          return `https://mock-storage.com/${path}/${file.name}`;
+      }
+  },
+  support: {
+      createTicket: async (jobId: string, subject: string, message: string) => {
+          await delay(1000);
+          console.log(`[Mock Support] Ticket created for Job ${jobId}: ${subject}`);
+          return "ticket_123";
       }
   },
   mechanic: {
@@ -194,6 +221,11 @@ const MockApi = {
         await MockApi.notifications.sendEmail(data.email, "Welcome to MechanicNow", "Your application is under review.");
         
         return newUser;
+    },
+    verifyBackground: async (email: string, ssn: string) => {
+        await delay(2000);
+        console.log(`[Checkr Mock] Initiating background check for ${email}`);
+        return { status: 'pending', checkId: 'checkr_123' };
     },
     getNearbyMechanics: async (lat: number, lng: number): Promise<Mechanic[]> => {
       await delay(600);
@@ -239,10 +271,6 @@ const MockApi = {
       const currentUser = getDbItem<UserProfile | null>('mn_user', null);
       let finalList = [m1Mechanic, ...storedMechanics, ...ghostMechanics];
 
-      // Remove the current user from the list if they are already in storedMechanics to avoid dupes,
-      // but strictly relying on `storedMechanics` is safer if we update it correctly in `updateStatus`.
-      // The `updateStatus` function now handles sync, so `storedMechanics` should be up to date.
-
       return finalList;
     },
     getDashboardData: async () => {
@@ -254,10 +282,26 @@ const MockApi = {
         stripeConnected: getDbItem('mn_stripe_connected', false)
       };
     },
-    onboardStripe: async () => {
+    createStripeConnectAccount: async () => {
+        // Simulating OAuth Link generation for Express Account
+        await delay(800);
+        return { 
+            url: 'https://connect.stripe.com/express/onboarding?client_id=ca_mock_12345&state=mock_state',
+            accountId: 'acct_mock_12345'
+        };
+    },
+    onboardStripe: async (authCode: string) => {
+        // Simulating Backend exchanging code for access token
         await delay(1500);
         setDbItem('mn_stripe_connected', true);
-        return { success: true };
+        return { success: true, stripeId: 'acct_mock_12345' };
+    },
+    payoutToBank: async (amount: number) => {
+        await delay(2000);
+        const current = getDbItem('mn_earnings_stats', DEFAULT_EARNINGS);
+        const updated = { ...current, week: 0 }; // Reset available balance
+        setDbItem('mn_earnings_stats', updated);
+        return { success: true, payoutId: `po_${Date.now()}` };
     },
     createJobRequest: async (job: JobRequest) => {
       const requests = getDbItem<JobRequest[]>('mn_dashboard_requests', MOCK_REQUESTS);
@@ -468,10 +512,17 @@ const RealApi = {
   },
 
   payment: {
-    // Stripe Real Implementation Stub
-    createPaymentIntent: async (amount: number, currency: string = 'usd') => {
+    // Stripe Real Implementation Stub with Connect logic
+    createPaymentIntent: async (amount: number, currency: string = 'usd', mechanicId?: string) => {
         // In real app, call your backend Cloud Function here
         await delay(500);
+        if (mechanicId) {
+            const fee = Math.round(amount * 0.20);
+            const transfer = amount - fee;
+            console.log(`%c[REAL Payment] Creating PaymentIntent: ${(amount/100).toFixed(2)} ${currency}`, 'color: #635bff; font-weight: bold;');
+            console.log(`%c[REAL Payment] Application Fee (20%): ${(fee/100).toFixed(2)} ${currency}`, 'color: #ef4444;');
+            console.log(`%c[REAL Payment] Transfer to Mechanic (${mechanicId}): ${(transfer/100).toFixed(2)} ${currency}`, 'color: #10b981;');
+        }
         return { clientSecret: 'pi_mock_secret_12345', id: 'pi_mock_12345' };
     },
     authorize: async (amount: number, method: PaymentMethod) => {
@@ -482,7 +533,7 @@ const RealApi = {
     },
     capture: async (jobId: string, amount: number) => {
          await delay(800);
-         console.log(`[Payment] Captured $${amount} for Job ${jobId}`);
+         console.log(`[Stripe Connect] Captured $${amount} (Split Payment)`);
          if (db) await updateDoc(doc(db, 'job_requests', jobId), { paymentStatus: 'CAPTURED' });
          return { success: true };
     }
@@ -498,6 +549,30 @@ const RealApi = {
           // In real app, call Cloud Function `sendEmail`
            console.log(`[REAL EMAIL] (Cloud Function) To: ${email} | Subject: ${subject}`);
           return true;
+      }
+  },
+
+  storage: {
+      uploadFile: async (file: File, path: string) => {
+          if (!storage || !auth?.currentUser) throw new Error("Storage unavailable");
+          const storageRef = ref(storage, `uploads/${auth.currentUser.uid}/${path}/${file.name}`);
+          await uploadBytes(storageRef, file);
+          return await getDownloadURL(storageRef);
+      }
+  },
+
+  support: {
+      createTicket: async (jobId: string, subject: string, message: string) => {
+          if (!db || !auth?.currentUser) throw new Error("DB unavailable");
+          const docRef = await addDoc(collection(db, 'support_tickets'), {
+              userId: auth.currentUser.uid,
+              jobId,
+              subject,
+              message,
+              status: 'OPEN',
+              createdAt: serverTimestamp()
+          });
+          return docRef.id;
       }
   },
 
@@ -544,6 +619,11 @@ const RealApi = {
         await RealApi.notifications.sendEmail(data.email, "Welcome to MechanicNow", "Your application is under review.");
 
         return mapUser(user, { name: data.name });
+    },
+    verifyBackground: async (email: string, ssn: string) => {
+        await delay(1000);
+        console.log(`[Checkr Real] Request sent to Checkr API via Cloud Function for ${email}`);
+        return { status: 'pending' };
     },
     getNearbyMechanics: async (lat: number, lng: number): Promise<Mechanic[]> => {
        if (!db) return [];
@@ -605,10 +685,29 @@ const RealApi = {
       return { requests, earnings: statsData.earnings || { today: 0, week: 0, month: 0 }, isOnline: !!statsData.isOnline, stripeConnected: !!statsData.stripeConnected };
     },
     
-    onboardStripe: async () => {
+    createStripeConnectAccount: async () => {
+        // Backend Cloud Function call would go here for Express account creation
+        await delay(500);
+        return { 
+            url: 'https://connect.stripe.com/express/onboarding', 
+            accountId: `acct_${Date.now()}` 
+        };
+    },
+    
+    onboardStripe: async (authCode?: string) => {
          if (!auth?.currentUser || !db) throw new Error("Error");
          await updateDoc(doc(db, 'mechanics', auth.currentUser.uid), { stripeConnected: true });
          return { success: true };
+    },
+
+    payoutToBank: async (amount: number) => {
+        if (!auth?.currentUser || !db) throw new Error("Error");
+        // Decrement balance transactionally
+        const ref = doc(db, 'mechanics', auth.currentUser.uid);
+        await updateDoc(ref, {
+             "earnings.week": 0 // Resetting week balance as payout
+        });
+        return { success: true, payoutId: `po_${Date.now()}` };
     },
 
     createJobRequest: async (job: JobRequest) => {

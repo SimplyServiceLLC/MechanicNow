@@ -140,6 +140,7 @@ const VoiceAssistant: React.FC = () => {
       onClick={toggleListen}
       className={`fixed bottom-24 left-6 z-50 p-4 rounded-full shadow-xl transition-all transform hover:scale-105 ${isListening ? 'bg-red-500 animate-pulse text-white' : 'bg-slate-800 text-white'}`}
       title="Voice Command"
+      style={{ marginBottom: 'env(safe-area-inset-bottom)' }}
     >
       <Mic size={24} />
     </button>
@@ -156,8 +157,10 @@ const Layout = ({ children }: { children?: React.ReactNode }) => {
   const isAppView = location.pathname !== '/';
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50 font-sans text-slate-800">
-      <header className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${isAppView ? 'bg-white/90 backdrop-blur-md shadow-sm border-b border-gray-100' : 'bg-transparent'}`}>
+    <div className="min-h-screen flex flex-col bg-gray-50 font-sans text-slate-800 pb-[env(safe-area-inset-bottom)]">
+      <header 
+        className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 pt-[env(safe-area-inset-top)] ${isAppView ? 'bg-white/90 backdrop-blur-md shadow-sm border-b border-gray-100' : 'bg-transparent'}`}
+      >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-4">
             {/* Logo */}
@@ -253,7 +256,8 @@ const Layout = ({ children }: { children?: React.ReactNode }) => {
         )}
       </header>
 
-      <main className="flex-grow pt-0">
+      {/* Main Content with padding to account for fixed header + safe area */}
+      <main className="flex-grow pt-[calc(72px+env(safe-area-inset-top))]">
         {children}
       </main>
       <VoiceAssistant />
@@ -265,7 +269,7 @@ const NotificationToast: React.FC<{ notifications: Notification[] }> = ({ notifi
   if (notifications.length === 0) return null;
 
   return (
-    <div className="fixed top-24 right-4 z-[60] flex flex-col gap-2 pointer-events-none">
+    <div className="fixed top-24 right-4 z-[60] flex flex-col gap-2 pointer-events-none mt-[env(safe-area-inset-top)]">
       {notifications.map((n) => (
         <div key={n.id} className="bg-white rounded-lg shadow-xl border border-blue-100 p-4 w-80 animate-slide-in pointer-events-auto flex gap-3 items-start">
            <div className="bg-blue-100 text-blue-600 p-2 rounded-full">

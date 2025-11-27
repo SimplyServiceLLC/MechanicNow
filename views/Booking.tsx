@@ -1,8 +1,4 @@
 
-
-
-
-
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useNavigate, useLocation as useRouteLocation } from 'react-router-dom';
 import { useApp } from '../App';
@@ -59,30 +55,30 @@ const VEHICLE_YEARS = Array.from({length: currentYear - 1989}, (_, i) => (curren
 // Comprehensive Services List (25+ Common Items)
 const COMMON_SERVICES: ServiceItem[] = [
   // Roadside / Urgent
-  { id: 'rs1', name: 'Car Lockout Service', price: 85.00, durationMin: 30, type: ServiceType.REPAIR, description: 'Emergency door unlocking service.' },
-  { id: 'rs2', name: 'Jump Start', price: 65.00, durationMin: 20, type: ServiceType.REPAIR, description: 'Battery jump start service.' },
-  { id: 'rs3', name: 'Tire Change (Spare)', price: 75.00, durationMin: 45, type: ServiceType.REPAIR, description: 'Installation of your spare tire.' },
-  { id: 'rs4', name: 'Fuel Delivery', price: 50.00, durationMin: 30, type: ServiceType.REPAIR, description: 'Delivery of 2 gallons of fuel (fuel cost extra).' },
-  { id: 'rs5', name: 'Battery Replacement', price: 149.99, durationMin: 45, type: ServiceType.REPAIR, description: 'New battery installation and testing.' },
+  { id: 'rs1', name: 'Car Lockout Service', price: 85.00, durationMin: 30, type: ServiceType.ROADSIDE, description: 'Emergency door unlocking service.' },
+  { id: 'rs2', name: 'Jump Start', price: 65.00, durationMin: 20, type: ServiceType.ROADSIDE, description: 'Battery jump start service.' },
+  { id: 'rs3', name: 'Tire Change (Spare)', price: 75.00, durationMin: 45, type: ServiceType.ROADSIDE, description: 'Installation of your spare tire.' },
+  { id: 'rs4', name: 'Fuel Delivery', price: 50.00, durationMin: 30, type: ServiceType.ROADSIDE, description: 'Delivery of 2 gallons of fuel (fuel cost extra).' },
+  { id: 'rs5', name: 'Battery Replacement', price: 149.99, durationMin: 45, type: ServiceType.ROADSIDE, description: 'New battery installation and testing.' },
   
-  // Maintenance
-  { id: 'm1', name: 'Oil Change (Full Synthetic)', price: 89.99, durationMin: 45, type: ServiceType.MAINTENANCE, description: 'Up to 5 qts synthetic oil + filter.' },
-  { id: 'm2', name: 'Oil Change (Conventional)', price: 59.99, durationMin: 45, type: ServiceType.MAINTENANCE, description: 'Up to 5 qts conventional oil + filter.' },
-  { id: 'm3', name: 'Brake Pads Replacement (Front)', price: 189.00, durationMin: 90, type: ServiceType.REPAIR, description: 'Ceramic brake pads installation (Front axle).' },
-  { id: 'm4', name: 'Brake Pads Replacement (Rear)', price: 189.00, durationMin: 90, type: ServiceType.REPAIR, description: 'Ceramic brake pads installation (Rear axle).' },
-  { id: 'm5', name: 'Brake Rotors & Pads (Front)', price: 350.00, durationMin: 120, type: ServiceType.REPAIR, description: 'New rotors and pads (Front axle).' },
-  { id: 'm6', name: 'Spark Plug Replacement (4-Cyl)', price: 140.00, durationMin: 60, type: ServiceType.MAINTENANCE, description: 'Replace spark plugs on 4-cylinder engine.' },
-  { id: 'm7', name: 'Air Filter Replacement', price: 40.00, durationMin: 15, type: ServiceType.MAINTENANCE, description: 'Engine air filter replacement.' },
-  { id: 'm8', name: 'Cabin Air Filter', price: 45.00, durationMin: 20, type: ServiceType.MAINTENANCE, description: 'Cabin air filter replacement.' },
-  { id: 'm9', name: 'Wiper Blades Replacement', price: 40.00, durationMin: 15, type: ServiceType.MAINTENANCE, description: 'Front windshield wiper blades.' },
-
   // Diagnostics & Inspection
   { id: 'd1', name: 'Diagnostic (Check Engine Light)', price: 125.00, durationMin: 60, type: ServiceType.DIAGNOSTIC, description: 'OBD-II scan and physical inspection to identify issues.' },
   { id: 'd2', name: 'Pre-Purchase Inspection', price: 150.00, durationMin: 90, type: ServiceType.DIAGNOSTIC, description: 'Comprehensive 150-point vehicle inspection.' },
   { id: 'd3', name: 'Leak Inspection', price: 95.00, durationMin: 45, type: ServiceType.DIAGNOSTIC, description: 'Locate oil, coolant, or fluid leaks.' },
   { id: 'd4', name: 'Noise Diagnostic', price: 95.00, durationMin: 45, type: ServiceType.DIAGNOSTIC, description: 'Identify source of rattles, squeaks, or grinding.' },
 
+  // Maintenance
+  { id: 'm1', name: 'Oil Change (Full Synthetic)', price: 89.99, durationMin: 45, type: ServiceType.MAINTENANCE, description: 'Up to 5 qts synthetic oil + filter.' },
+  { id: 'm2', name: 'Oil Change (Conventional)', price: 59.99, durationMin: 45, type: ServiceType.MAINTENANCE, description: 'Up to 5 qts conventional oil + filter.' },
+  { id: 'm6', name: 'Spark Plug Replacement (4-Cyl)', price: 140.00, durationMin: 60, type: ServiceType.MAINTENANCE, description: 'Replace spark plugs on 4-cylinder engine.' },
+  { id: 'm7', name: 'Air Filter Replacement', price: 40.00, durationMin: 15, type: ServiceType.MAINTENANCE, description: 'Engine air filter replacement.' },
+  { id: 'm8', name: 'Cabin Air Filter', price: 45.00, durationMin: 20, type: ServiceType.MAINTENANCE, description: 'Cabin air filter replacement.' },
+  { id: 'm9', name: 'Wiper Blades Replacement', price: 40.00, durationMin: 15, type: ServiceType.MAINTENANCE, description: 'Front windshield wiper blades.' },
+
   // Common Repairs
+  { id: 'm3', name: 'Brake Pads Replacement (Front)', price: 189.00, durationMin: 90, type: ServiceType.REPAIR, description: 'Ceramic brake pads installation (Front axle).' },
+  { id: 'm4', name: 'Brake Pads Replacement (Rear)', price: 189.00, durationMin: 90, type: ServiceType.REPAIR, description: 'Ceramic brake pads installation (Rear axle).' },
+  { id: 'm5', name: 'Brake Rotors & Pads (Front)', price: 350.00, durationMin: 120, type: ServiceType.REPAIR, description: 'New rotors and pads (Front axle).' },
   { id: 'r1', name: 'Alternator Replacement', price: 380.00, durationMin: 120, type: ServiceType.REPAIR, description: 'Alternator replacement (parts included for most cars).' },
   { id: 'r2', name: 'Starter Replacement', price: 320.00, durationMin: 90, type: ServiceType.REPAIR, description: 'Starter motor replacement.' },
   { id: 'r3', name: 'Serpentine Belt Replacement', price: 130.00, durationMin: 45, type: ServiceType.REPAIR, description: 'Drive belt replacement.' },
@@ -91,6 +87,13 @@ const COMMON_SERVICES: ServiceItem[] = [
   { id: 'r6', name: 'Water Pump Replacement', price: 450.00, durationMin: 180, type: ServiceType.REPAIR, description: 'Water pump replacement (external only).' },
   { id: 'r7', name: 'O2 Sensor Replacement', price: 210.00, durationMin: 60, type: ServiceType.REPAIR, description: 'Oxygen sensor replacement (per sensor).' },
   { id: 'r8', name: 'Headlight Bulb Replacement', price: 60.00, durationMin: 30, type: ServiceType.REPAIR, description: 'Standard halogen bulb replacement (pair).' },
+];
+
+const SERVICE_CATEGORIES = [
+  { type: ServiceType.DIAGNOSTIC, label: 'Diagnostics & Inspection', icon: <Stethoscope size={16} className="text-purple-500" /> },
+  { type: ServiceType.MAINTENANCE, label: 'Routine Maintenance', icon: <Droplet size={16} className="text-blue-500" /> },
+  { type: ServiceType.REPAIR, label: 'Common Repairs', icon: <Wrench size={16} className="text-slate-500" /> },
+  { type: ServiceType.ROADSIDE, label: 'Roadside Assistance', icon: <AlertTriangle size={16} className="text-amber-500" /> }
 ];
 
 // --- COMPONENTS ---
@@ -182,7 +185,7 @@ const AddressAutocomplete = ({ value, onChange, onSelect }: { value: string, onC
   );
 };
 
-// Interactive Mechanics Map (Leaflet)
+// Enhanced Interactive Mechanics Map (Leaflet)
 const AvailableMechanicsMap = ({ 
   active, 
   center, 
@@ -213,10 +216,15 @@ const AvailableMechanicsMap = ({
           zoomControl: false,
           scrollWheelZoom: true,
           dragging: true,
-          attributionControl: false 
-      }).setView([36.8508, -76.2859], 10);
+          attributionControl: false,
+          zoomAnimation: true,
+          markerZoomAnimation: true
+      }).setView([36.8508, -76.2859], 13);
       
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        className: 'map-tiles'
+      }).addTo(map);
       leafletMap.current = map;
 
       // Event Listeners for Drag-to-Pin
@@ -237,7 +245,6 @@ const AvailableMechanicsMap = ({
   }, []); // Empty dependency array for init only
 
   // Update View when "center" prop changes explicitly (e.g. from Autocomplete selection or "Locate Me")
-  // We use a flag to prevent the 'moveend' event from triggering a reverse geocode loop
   useEffect(() => {
     if (center && leafletMap.current) {
         const currentCenter = leafletMap.current.getCenter();
@@ -246,7 +253,11 @@ const AvailableMechanicsMap = ({
         // If distance is significant, fly there
         if (dist > 0.0001) {
              isInternalMove.current = true;
-             leafletMap.current.flyTo([center.lat, center.lng], 15, { duration: 1.5 });
+             leafletMap.current.flyTo([center.lat, center.lng], 15, { 
+               animate: true, 
+               duration: 1.2,
+               easeLinearity: 0.25
+             });
         }
     }
   }, [center]);
@@ -264,292 +275,112 @@ const AvailableMechanicsMap = ({
         const mechsToRender = [...mechanics];
         
         // Always generate some ghosts around the center if list is sparse
-        // This ensures the map feels "alive" nationally
         if (mechsToRender.length < 5 && leafletMap.current) {
             const mapCenter = leafletMap.current.getCenter();
              for (let i = 0; i < 5; i++) {
-                 const offsetLat = (Math.random() - 0.5) * 0.03;
-                 const offsetLng = (Math.random() - 0.5) * 0.03;
+                 const offsetLat = (Math.random() - 0.5) * 0.04;
+                 const offsetLng = (Math.random() - 0.5) * 0.04;
                  mechsToRender.push({
                      id: `ghost_${i}`,
+                     name: ['Mike R.', 'Sarah L.', 'Dave C.', 'Jose M.', 'Alex T.'][i] || 'Pro Mechanic',
+                     rating: 4.8 + (Math.random() * 0.2),
+                     eta: `${5 + Math.floor(Math.random() * 15)} min`,
                      lat: mapCenter.lat + offsetLat,
                      lng: mapCenter.lng + offsetLng
                  } as any);
              }
         }
 
+        // Helper to create the pin icon HTML
+        const mechIconHTML = (mech: any) => `
+            <div class="relative group transition-all duration-300">
+                <div class="absolute -inset-4 bg-blue-500/10 rounded-full blur-md opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                <div class="relative z-10 w-12 h-12 bg-slate-900 rounded-full border-2 border-white shadow-xl flex items-center justify-center text-white transform transition-transform group-hover:scale-110 group-hover:bg-blue-600">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+                </div>
+            </div>
+        `;
+
         mechsToRender.forEach((mech: any) => {
              if (mech.lat && mech.lng) {
                  const mechIcon = L.divIcon({
-                    className: 'custom-div-icon',
-                    html: `
-                    <div class="relative transition-all duration-500">
-                        <div class="absolute -top-3 -left-3 w-8 h-8 bg-blue-500/20 rounded-full animate-ping"></div>
-                        <div class="relative z-10 w-8 h-8 bg-white rounded-full border-2 border-slate-900 shadow-md flex items-center justify-center text-sm transform -rotate-45 hover:scale-110 hover:bg-slate-50 transition-transform">
-                            🚗
-                        </div>
-                    </div>`,
-                    iconSize: [32, 32]
+                    className: 'custom-mech-icon',
+                    html: mechIconHTML(mech),
+                    iconSize: [48, 48],
+                    iconAnchor: [24, 24]
                  });
+                 
                  const mm = L.marker([mech.lat, mech.lng], { icon: mechIcon }).addTo(leafletMap.current);
+                 
+                 // Enhanced Tooltip
+                 const tooltipContent = `
+                    <div class="text-left">
+                        <div class="font-bold text-slate-900 text-sm">${mech.name}</div>
+                        <div class="flex items-center gap-2 text-xs text-slate-500 mt-0.5">
+                            <span class="flex items-center gap-0.5 text-amber-500 font-bold">★ ${mech.rating?.toFixed(1) || '5.0'}</span>
+                            <span>•</span>
+                            <span class="font-medium text-green-600">${mech.eta || '10 min'}</span>
+                        </div>
+                    </div>
+                 `;
+
+                 mm.bindTooltip(tooltipContent, {
+                     permanent: false, // Show on hover
+                     direction: 'top',
+                     className: 'custom-tooltip',
+                     offset: [0, -28],
+                     opacity: 1
+                 });
+
+                 // Click interaction for markers (optional, as main flow is drag map)
+                 mm.on('click', () => {
+                     mm.openTooltip();
+                 });
+
                  markers.current.push(mm);
              }
         });
     }
-  }, [mechanics, active, center]); // Re-render markers when mechanics or map active state changes
+  }, [mechanics, active, center]); 
 
   return (
     <div className={`w-full h-full bg-slate-100 relative overflow-hidden transition-opacity duration-1000 ${active ? 'opacity-100' : 'opacity-50 grayscale'}`}>
+      <style>{`
+        .custom-tooltip {
+          background: white;
+          border: none;
+          border-radius: 12px;
+          box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+          padding: 8px 12px;
+          font-family: 'Inter', sans-serif;
+        }
+        .custom-tooltip:before {
+          border-top-color: white;
+        }
+        .leaflet-div-icon {
+          background: transparent;
+          border: none;
+        }
+      `}</style>
       <div ref={mapRef} className="w-full h-full z-0" />
       
       {active && (
-        <div className="absolute bottom-4 left-4 z-[400] bg-white/90 backdrop-blur px-3 py-1.5 rounded-full shadow-sm text-xs font-bold text-slate-700 flex items-center gap-2 border border-slate-200">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
-            </span>
-            {mechanics.length > 0 ? `${mechanics.length} mechanics nearby` : 'Locating professionals...'}
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[400] bg-white/90 backdrop-blur-md px-4 py-2 rounded-full shadow-lg border border-slate-100 flex items-center gap-2 animate-fade-in pointer-events-none">
+             <div className="flex -space-x-2">
+                {mechanics.slice(0,3).map((m,i) => (
+                    <div key={i} className="w-6 h-6 rounded-full bg-slate-200 border-2 border-white flex items-center justify-center text-[8px] font-bold overflow-hidden">
+                        {m.avatar ? <img src={m.avatar} className="w-full h-full object-cover"/> : m.name[0]}
+                    </div>
+                ))}
+             </div>
+             <span className="text-xs font-bold text-slate-700">
+                {mechanics.length > 0 ? `${mechanics.length} pros nearby` : 'Scanning area...'}
+             </span>
         </div>
       )}
     </div>
   );
 };
-
-export const BookingConfirmationView = ({ mechanic, vehicle, services, date, time, location, totalPrice, onConfirm, onBack, isProcessing, onUpdateServices, availableServices }: {
-    mechanic: Mechanic, 
-    vehicle: Vehicle, 
-    services: ServiceItem[], 
-    date: string, 
-    time: string, 
-    location: string, 
-    totalPrice: number, 
-    onConfirm: (paymentMethod?: PaymentMethod, priceBreakdown?: PriceBreakdown) => void, 
-    onBack: () => void,
-    isProcessing: boolean,
-    onUpdateServices: (services: ServiceItem[]) => void,
-    availableServices: ServiceItem[]
-}) => {
-    
-    const [isEditingCart, setIsEditingCart] = useState(false);
-    const [localServices, setLocalServices] = useState<ServiceItem[]>(services);
-    const [paymentType, setPaymentType] = useState<'CARD' | 'CASH'>('CARD');
-    const [agreedToTerms, setAgreedToTerms] = useState(false);
-
-    useEffect(() => {
-        setLocalServices(services);
-    }, [services]);
-
-    const handleRemoveService = (id: string) => {
-        const updated = localServices.filter(s => s.id !== id);
-        setLocalServices(updated);
-        onUpdateServices(updated); // Sync up
-    };
-
-    const handleAddService = (service: ServiceItem) => {
-        if (localServices.find(s => s.id === service.id)) return;
-        const updated = [...localServices, service];
-        setLocalServices(updated);
-        onUpdateServices(updated);
-    };
-
-    const currentTotal = localServices.reduce((acc, s) => acc + s.price, 0);
-
-    // Calculate Breakdown
-    const breakdown: PriceBreakdown = {
-        subtotal: currentTotal,
-        tax: currentTotal * 0.08,
-        total: (currentTotal * 1.08),
-        platformFee: currentTotal * 0.20,
-        mechanicPayout: currentTotal * 0.80
-    };
-
-    return (
-        <div className="min-h-screen bg-gray-50 pt-24 pb-10 px-4 animate-fade-in flex items-center justify-center">
-            <div className="w-full max-w-2xl bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-100">
-                <div className="bg-slate-900 p-6 text-white text-center">
-                    <h2 className="text-2xl font-bold mb-1">Confirm Booking</h2>
-                    <p className="text-slate-400 text-sm">Review details to secure your mechanic.</p>
-                </div>
-            
-                <div className="p-6 space-y-6">
-                    <div className="flex items-center gap-4 p-4 bg-slate-50 rounded-xl border border-slate-100">
-                    <img src={mechanic.avatar} alt={mechanic.name} className="w-16 h-16 rounded-full object-cover border-2 border-white shadow-sm" />
-                    <div>
-                        <h3 className="font-bold text-lg text-slate-900">{mechanic.name}</h3>
-                        <div className="flex items-center gap-1 text-amber-500 text-sm font-medium">
-                            <Star size={14} fill="currentColor" /> {mechanic.rating} ({mechanic.jobsCompleted} jobs)
-                        </div>
-                    </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div>
-                            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Service Details</h3>
-                            <div className="space-y-3 text-sm bg-white border border-slate-100 rounded-xl p-4">
-                                <div className="flex justify-between items-center py-1">
-                                    <span className="text-slate-500 flex items-center gap-2"><CheckCircle size={14} /> Vehicle</span>
-                                    <span className="font-semibold text-slate-900">{vehicle.year} {vehicle.make} {vehicle.model}</span>
-                                </div>
-                                <div className="flex justify-between items-center py-1">
-                                    <span className="text-slate-500 flex items-center gap-2"><Calendar size={14} /> Time</span>
-                                    <span className="font-semibold text-slate-900">{new Date(date).toLocaleDateString()} @ {time}</span>
-                                </div>
-                                <div className="flex justify-between items-center py-1">
-                                    <span className="text-slate-500 flex items-center gap-2"><MapPin size={14} /> Location</span>
-                                    <span className="font-semibold text-slate-900 text-right max-w-[120px] truncate">{location}</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div>
-                            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Payment Method</h3>
-                            <div className="grid grid-cols-2 gap-3 mb-3">
-                                <button
-                                    onClick={() => setPaymentType('CARD')}
-                                    className={`p-3 rounded-xl border-2 flex flex-col items-center justify-center gap-2 transition-all ${paymentType === 'CARD' ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-slate-100 bg-white text-slate-500 hover:border-slate-200'}`}
-                                >
-                                    <CreditCard size={24} />
-                                    <span className="text-xs font-bold">Secure Card</span>
-                                </button>
-                                <button
-                                    onClick={() => setPaymentType('CASH')}
-                                    className={`p-3 rounded-xl border-2 flex flex-col items-center justify-center gap-2 transition-all ${paymentType === 'CASH' ? 'border-green-600 bg-green-50 text-green-700' : 'border-slate-100 bg-white text-slate-500 hover:border-slate-200'}`}
-                                >
-                                    <Wallet size={24} />
-                                    <span className="text-xs font-bold">Pay Later</span>
-                                </button>
-                            </div>
-                            {paymentType === 'CARD' ? (
-                                <div className="p-4 bg-white rounded-xl border border-blue-200 shadow-sm relative overflow-hidden">
-                                     {/* Simulated Stripe Element Container */}
-                                     <div className="flex items-center gap-3 mb-3">
-                                         <div className="flex gap-1">
-                                             <div className="w-8 h-5 bg-slate-200 rounded"></div>
-                                             <div className="w-8 h-5 bg-slate-200 rounded"></div>
-                                             <div className="w-8 h-5 bg-slate-200 rounded"></div>
-                                         </div>
-                                         <span className="text-[10px] text-slate-400 font-bold uppercase ml-auto flex items-center gap-1">
-                                             <ShieldCheck size={10} /> Stripe Secure
-                                         </span>
-                                     </div>
-                                     <div className="space-y-3">
-                                         <div className="h-10 bg-slate-50 border border-slate-200 rounded-lg flex items-center px-3 text-sm text-slate-400 font-mono">
-                                             •••• •••• •••• 4242
-                                         </div>
-                                         <div className="flex gap-3">
-                                             <div className="h-10 flex-1 bg-slate-50 border border-slate-200 rounded-lg flex items-center px-3 text-sm text-slate-400 font-mono">
-                                                MM / YY
-                                             </div>
-                                              <div className="h-10 flex-1 bg-slate-50 border border-slate-200 rounded-lg flex items-center px-3 text-sm text-slate-400 font-mono">
-                                                CVC
-                                             </div>
-                                         </div>
-                                     </div>
-                                </div>
-                            ) : (
-                                <div className="p-3 bg-white rounded-xl border border-slate-200 flex items-center gap-3 shadow-sm">
-                                    <div className="bg-slate-100 p-2 rounded"><Banknote size={16} className="text-slate-600"/></div>
-                                    <div className="flex-1 text-left">
-                                         <p className="text-xs font-bold text-slate-900">Pay After Service</p>
-                                         <p className="text-[10px] text-slate-500">Zelle, Venmo, or Cash</p>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
-                    <div>
-                        <div className="flex justify-between items-end mb-3">
-                            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Summary</h3>
-                            <button onClick={() => setIsEditingCart(!isEditingCart)} className="text-xs text-blue-600 font-bold hover:underline flex items-center gap-1">
-                                {isEditingCart ? 'Done Editing' : 'Edit Services'}
-                            </button>
-                        </div>
-                        
-                        <div className="bg-slate-50 p-5 rounded-xl border border-slate-100 transition-all">
-                            {localServices.map((s) => (
-                                <div key={s.id} className="flex justify-between items-center mb-2 text-sm group">
-                                    <div className="flex items-center gap-2">
-                                        {isEditingCart && (
-                                            <button onClick={() => handleRemoveService(s.id)} className="text-red-400 hover:text-red-600 transition-colors">
-                                                <X size={14} />
-                                            </button>
-                                        )}
-                                        <span className="text-slate-700">{s.name}</span>
-                                    </div>
-                                    <span className="font-medium text-slate-900">${s.price.toFixed(2)}</span>
-                                </div>
-                            ))}
-                            
-                            {isEditingCart && (
-                                <div className="mt-3 pt-3 border-t border-slate-200">
-                                    <p className="text-xs font-bold text-slate-500 mb-2">Add More Services:</p>
-                                    <div className="max-h-40 overflow-y-auto space-y-1">
-                                        {availableServices.filter(s => !localServices.find(ls => ls.id === s.id)).map(s => (
-                                            <button 
-                                                key={s.id} 
-                                                onClick={() => handleAddService(s)}
-                                                className="w-full flex justify-between items-center p-2 rounded hover:bg-white text-xs text-slate-600 border border-transparent hover:border-slate-200"
-                                            >
-                                                <span>{s.name}</span>
-                                                <span className="font-bold text-blue-600">+ ${s.price.toFixed(0)}</span>
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-
-                             <div className="flex justify-between mb-2 text-sm pt-4 border-t border-slate-200 border-dashed mt-2">
-                                    <span className="text-slate-500">Subtotal</span>
-                                    <span className="font-medium text-slate-700">${breakdown.subtotal.toFixed(2)}</span>
-                             </div>
-                             <div className="flex justify-between mb-2 text-sm">
-                                    <span className="text-slate-500">Tax (8%)</span>
-                                    <span className="font-medium text-slate-700">${breakdown.tax.toFixed(2)}</span>
-                             </div>
-                            <div className="border-t border-slate-200 mt-3 pt-3 flex justify-between font-bold text-xl text-slate-900">
-                                <span>Total</span>
-                                <span>${breakdown.total.toFixed(2)}</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
-                        <label className="flex items-start gap-3 cursor-pointer">
-                            <input 
-                                type="checkbox" 
-                                className="mt-1 w-4 h-4 rounded text-blue-600"
-                                checked={agreedToTerms}
-                                onChange={(e) => setAgreedToTerms(e.target.checked)}
-                            />
-                            <span className="text-xs text-slate-700">
-                                I agree to the <a href="#/terms" target="_blank" rel="noopener noreferrer" className="font-bold text-blue-600 hover:underline">Terms of Service</a> and acknowledge that I have read the <a href="#/terms" target="_blank" rel="noopener noreferrer" className="font-bold text-blue-600 hover:underline">Liability Waiver</a>. I understand that MechanicNow connects me with independent contractors.
-                            </span>
-                        </label>
-                    </div>
-
-                    <div className="flex gap-4 pt-2">
-                        <button 
-                            onClick={onBack} 
-                            disabled={isProcessing}
-                            className="flex-1 py-4 rounded-xl font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors disabled:opacity-50"
-                        >
-                            Back
-                        </button>
-                        <button 
-                            onClick={() => onConfirm({ id: 'pm_prod', type: paymentType, last4: '4242', brand: 'Visa' }, breakdown)} 
-                            disabled={isProcessing || localServices.length === 0 || !agreedToTerms}
-                            className="flex-[2] py-4 rounded-xl font-bold text-white bg-blue-600 hover:bg-blue-500 shadow-lg shadow-blue-200 transition-colors flex justify-center items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                            {isProcessing ? <Loader2 className="animate-spin" /> : <><CheckCircle size={16} /> Book Appointment</>}
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-};
-
 
 export const Booking: React.FC = () => {
   const navigate = useNavigate();
@@ -996,35 +827,44 @@ export const Booking: React.FC = () => {
                     )}
                   </div>
 
-                  <div className="flex-1 overflow-y-auto pr-2 min-h-0 space-y-3 max-h-[400px]">
-                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 sticky top-0 bg-white py-2 z-10">Popular Services</h3>
-                    {COMMON_SERVICES.map(service => (
-                        <div 
-                            key={service.id}
-                            onClick={() => toggleService(service)}
-                            className={`p-4 rounded-xl border cursor-pointer transition-all flex justify-between items-center ${
-                                selectedServices.find(s => s.id === service.id) 
-                                ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500' 
-                                : 'border-slate-200 hover:border-slate-300 bg-white'
-                            }`}
-                        >
-                            <div className="flex-1 pr-4">
-                                <h3 className="font-semibold text-slate-800 flex items-center gap-2">
-                                    {service.id.startsWith('rs') && <AlertTriangle size={16} className="text-amber-500" />}
-                                    {service.id.startsWith('m') && <Droplet size={16} className="text-blue-500" />}
-                                    {service.id.startsWith('d') && <Stethoscope size={16} className="text-purple-500" />}
-                                    {service.id.startsWith('r') && <Wrench size={16} className="text-slate-500" />}
-                                    {service.name}
+                  <div className="flex-1 overflow-y-auto pr-2 min-h-0 space-y-6 max-h-[400px] scroll-smooth">
+                    {SERVICE_CATEGORIES.map(category => {
+                        const categoryServices = COMMON_SERVICES.filter(s => s.type === category.type);
+                        if (categoryServices.length === 0) return null;
+
+                        return (
+                            <div key={category.type} className="animate-fade-in">
+                                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 sticky top-0 bg-white/95 backdrop-blur-sm py-2 z-10 flex items-center gap-2 border-b border-gray-100">
+                                    {category.icon} {category.label}
                                 </h3>
-                                <p className="text-xs text-slate-500 mt-1 line-clamp-1">{service.description}</p>
-                                <p className="text-xs font-bold text-slate-700 mt-2">${service.price.toFixed(2)} • {service.durationMin} mins</p>
+                                <div className="space-y-3">
+                                    {categoryServices.map(service => (
+                                        <div 
+                                            key={service.id}
+                                            onClick={() => toggleService(service)}
+                                            className={`p-4 rounded-xl border cursor-pointer transition-all flex justify-between items-center ${
+                                                selectedServices.find(s => s.id === service.id) 
+                                                ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500' 
+                                                : 'border-slate-200 hover:border-slate-300 bg-white'
+                                            }`}
+                                        >
+                                            <div className="flex-1 pr-4">
+                                                <h3 className="font-semibold text-slate-800 flex items-center gap-2">
+                                                    {service.name}
+                                                </h3>
+                                                <p className="text-xs text-slate-500 mt-1 line-clamp-1">{service.description}</p>
+                                                <p className="text-xs font-bold text-slate-700 mt-2">${service.price.toFixed(2)} • {service.durationMin} mins</p>
+                                            </div>
+                                            {selectedServices.find(s => s.id === service.id) ? 
+                                                <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center"><div className="w-2.5 h-2.5 bg-white rounded-full"></div></div> 
+                                                : <div className="w-6 h-6 border-2 border-slate-200 rounded-full"></div>
+                                            }
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
-                            {selectedServices.find(s => s.id === service.id) ? 
-                                <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center"><div className="w-2.5 h-2.5 bg-white rounded-full"></div></div> 
-                                : <div className="w-6 h-6 border-2 border-slate-200 rounded-full"></div>
-                            }
-                        </div>
-                    ))}
+                        )
+                    })}
                   </div>
                   
                   {selectedServices.length > 0 && (
@@ -1079,14 +919,14 @@ export const Booking: React.FC = () => {
                       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[401] pointer-events-none -mt-4 transition-transform duration-200"
                            style={{ transform: isMapMoving ? 'translate(-50%, -60%) scale(1.1)' : 'translate(-50%, -50%) scale(1)' }}>
                            <div className="relative">
-                               <MapPin size={32} className="text-slate-900 fill-slate-900 drop-shadow-md" />
-                               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-1.5 h-1.5 bg-white rounded-full mt-[-6px]"></div>
+                               <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-4 h-1 bg-black/20 rounded-full blur-[2px]"></div>
+                               <MapPin size={36} className="text-slate-900 fill-slate-900 drop-shadow-xl relative z-10" />
+                               <div className="absolute top-[14px] left-1/2 -translate-x-1/2 w-2 h-2 bg-white rounded-full z-20"></div>
                            </div>
-                           <div className="w-1.5 h-1.5 bg-black/30 rounded-full blur-[2px] mx-auto mt-[-2px]"></div>
                       </div>
                       
                       {isMapMoving && (
-                          <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-xs px-3 py-1.5 rounded-full shadow-lg z-[402] font-bold">
+                          <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-xs px-3 py-1.5 rounded-full shadow-lg z-[402] font-bold animate-fade-in">
                               Release to set location
                           </div>
                       )}
