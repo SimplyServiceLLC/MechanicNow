@@ -16,6 +16,7 @@ type User = any;
 
 import { getFirestore, collection, getDocs, doc, updateDoc, setDoc, getDoc, deleteDoc, onSnapshot, query, limit, orderBy, where, increment, serverTimestamp, addDoc } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 
 // --- FIREBASE CONFIGURATION ---
 // Ensure these are set in your .env file for Production
@@ -32,7 +33,7 @@ const firebaseConfig = {
 // Check if keys exist to determine mode
 const isFirebaseConfigured = !!(firebaseConfig.apiKey && firebaseConfig.projectId);
 
-let db: any, auth: any, storage: any;
+let db: any, auth: any, storage: any, functions: any;
 let connectionMode: 'MOCK' | 'REAL' = 'MOCK';
 
 if (isFirebaseConfigured) {
@@ -45,6 +46,7 @@ if (isFirebaseConfigured) {
     db = getFirestore(app);
     auth = getAuth(app);
     storage = getStorage(app);
+    functions = getFunctions(app);
     
     // Lazy load analytics with safety check for named export vs default export
     if (typeof window !== 'undefined') {
@@ -512,43 +514,62 @@ const RealApi = {
   },
 
   payment: {
-    // Stripe Real Implementation Stub with Connect logic
+    // Calls Firebase Cloud Function 'createPaymentIntent'
     createPaymentIntent: async (amount: number, currency: string = 'usd', mechanicId?: string) => {
-        // In real app, call your backend Cloud Function here
-        await delay(500);
-        if (mechanicId) {
-            const fee = Math.round(amount * 0.20);
-            const transfer = amount - fee;
-            console.log(`%c[REAL Payment] Creating PaymentIntent: ${(amount/100).toFixed(2)} ${currency}`, 'color: #635bff; font-weight: bold;');
-            console.log(`%c[REAL Payment] Application Fee (20%): ${(fee/100).toFixed(2)} ${currency}`, 'color: #ef4444;');
-            console.log(`%c[REAL Payment] Transfer to Mechanic (${mechanicId}): ${(transfer/100).toFixed(2)} ${currency}`, 'color: #10b981;');
+        if (!functions) throw new Error("Functions not initialized");
+        const createPaymentIntentFn = httpsCallable(functions, 'createPaymentIntent');
+        
+        try {
+            const result: any = await createPaymentIntentFn({ amount, currency, mechanicStripeId: mechanicId });
+            return result.data as { clientSecret: string, id: string };
+        } catch (e: any) {
+            console.error("Payment Intent Error:", e);
+            throw new Error(e.message || "Failed to initiate payment");
         }
-        return { clientSecret: 'pi_mock_secret_12345', id: 'pi_mock_12345' };
     },
+    // We assume card authorization happens via Stripe Elements on frontend
     authorize: async (amount: number, method: PaymentMethod) => {
-        // Integration Point: Stripe or Square API
-        await delay(1000); 
-        console.log(`[Payment] Authorizing $${amount} on card ending ${method.last4}`);
+        // This is primarily a stub for the Stripe Elements workflow which handles auth internally
+        // In a real app, this might log the attempt
         return { success: true, transactionId: `tx_${Date.now()}` };
     },
+    // Calls Firebase Cloud Function 'capturePayment'
     capture: async (jobId: string, amount: number) => {
-         await delay(800);
-         console.log(`[Stripe Connect] Captured $${amount} (Split Payment)`);
-         if (db) await updateDoc(doc(db, 'job_requests', jobId), { paymentStatus: 'CAPTURED' });
-         return { success: true };
+         if (!functions) throw new Error("Functions not initialized");
+         const capturePaymentFn = httpsCallable(functions, 'capturePayment');
+         
+         try {
+             await capturePaymentFn({ jobId, amount });
+             return { success: true };
+         } catch (e: any) {
+             console.error("Capture Error:", e);
+             throw new Error("Failed to capture payment");
+         }
     }
   },
   
   notifications: {
       sendSMS: async (phone: string, message: string) => {
-          // In real app, call Cloud Function `sendSms`
-          console.log(`[REAL SMS] (Cloud Function) To: ${phone} | Body: ${message}`);
-          return true;
+          if (!functions) return false;
+          const sendSmsFn = httpsCallable(functions, 'sendSms');
+          try {
+              await sendSmsFn({ phone, message });
+              return true;
+          } catch(e) { 
+              console.error("SMS Failed", e);
+              return false; 
+          }
       },
       sendEmail: async (email: string, subject: string, body: string) => {
-          // In real app, call Cloud Function `sendEmail`
-           console.log(`[REAL EMAIL] (Cloud Function) To: ${email} | Subject: ${subject}`);
-          return true;
+          if (!functions) return false;
+          const sendEmailFn = httpsCallable(functions, 'sendEmail');
+          try {
+              await sendEmailFn({ email, subject, body });
+              return true;
+          } catch(e) {
+              console.error("Email Failed", e);
+              return false;
+          }
       }
   },
 
@@ -615,15 +636,21 @@ const RealApi = {
         };
         await setDoc(doc(db, 'mechanics', user.uid), mechanicData);
         
-        // 4. Send Welcome Email
+        // 4. Send Welcome Email via Cloud Function
         await RealApi.notifications.sendEmail(data.email, "Welcome to MechanicNow", "Your application is under review.");
 
         return mapUser(user, { name: data.name });
     },
     verifyBackground: async (email: string, ssn: string) => {
-        await delay(1000);
-        console.log(`[Checkr Real] Request sent to Checkr API via Cloud Function for ${email}`);
-        return { status: 'pending' };
+        if (!functions) throw new Error("Functions not initialized");
+        const verifyFn = httpsCallable(functions, 'verifyBackground');
+        try {
+            const result: any = await verifyFn({ email, ssn });
+            return result.data;
+        } catch (e: any) {
+            console.warn("Background Check Trigger Failed", e);
+            return { status: 'pending_manual' };
+        }
     },
     getNearbyMechanics: async (lat: number, lng: number): Promise<Mechanic[]> => {
        if (!db) return [];
@@ -686,28 +713,38 @@ const RealApi = {
     },
     
     createStripeConnectAccount: async () => {
-        // Backend Cloud Function call would go here for Express account creation
-        await delay(500);
-        return { 
-            url: 'https://connect.stripe.com/express/onboarding', 
-            accountId: `acct_${Date.now()}` 
-        };
+        if (!functions) throw new Error("Functions not initialized");
+        const createAccountFn = httpsCallable(functions, 'createConnectAccount');
+        try {
+            const result: any = await createAccountFn({ email: auth.currentUser?.email });
+            return result.data; // { url, accountId }
+        } catch(e: any) {
+            throw new Error("Failed to init Stripe Connect");
+        }
     },
     
     onboardStripe: async (authCode?: string) => {
          if (!auth?.currentUser || !db) throw new Error("Error");
+         // In a real flow, the webhook from Stripe would update the DB, but we can double check status here
          await updateDoc(doc(db, 'mechanics', auth.currentUser.uid), { stripeConnected: true });
          return { success: true };
     },
 
     payoutToBank: async (amount: number) => {
-        if (!auth?.currentUser || !db) throw new Error("Error");
-        // Decrement balance transactionally
-        const ref = doc(db, 'mechanics', auth.currentUser.uid);
-        await updateDoc(ref, {
-             "earnings.week": 0 // Resetting week balance as payout
-        });
-        return { success: true, payoutId: `po_${Date.now()}` };
+        if (!auth?.currentUser || !db || !functions) throw new Error("Error");
+        
+        // Call cloud function to initiate transfer
+        const payoutFn = httpsCallable(functions, 'payoutToBank');
+        try {
+            await payoutFn({ amount });
+            
+            // Optimistically update local UI while server processes
+            const ref = doc(db, 'mechanics', auth.currentUser.uid);
+            await updateDoc(ref, { "earnings.week": 0 });
+            return { success: true };
+        } catch(e) {
+            throw new Error("Payout failed");
+        }
     },
 
     createJobRequest: async (job: JobRequest) => {
@@ -721,7 +758,7 @@ const RealApi = {
         
         await setDoc(doc(db, 'job_requests', job.id), safeJob);
         
-        // Notify Mechanic
+        // Notify Mechanic via Cloud Function
         if (job.mechanicId) {
             RealApi.notifications.sendSMS("+15550000000", `New Job Request: ${job.vehicle}`);
         }
@@ -742,7 +779,7 @@ const RealApi = {
        
        await updateDoc(doc(db, 'job_requests', updatedJob.id), safeJob);
        
-       // Notify Customer
+       // Notify Customer via Cloud Function
        if (updatedJob.status === 'ACCEPTED') {
           RealApi.notifications.sendSMS("+15550000000", `MechanicNow: Your mechanic is on the way!`);
        } else if (updatedJob.status === 'ARRIVED') {
