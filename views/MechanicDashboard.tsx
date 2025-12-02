@@ -489,6 +489,13 @@ export const MechanicDashboard: React.FC = () => {
             setIsOnline(data.isOnline);
             setIsStripeConnected(!!data.stripeConnected);
             prevRequestsRef.current = data.requests;
+            
+            // Init profile data if available
+            // For now assuming user context or separate fetch, simplified here:
+            if (user.isMechanic) {
+                // mock prefill
+                setProfileExp(5);
+            }
         } catch (e) {
             notify('Error', 'Failed to load dashboard.');
         } finally {
@@ -503,6 +510,36 @@ export const MechanicDashboard: React.FC = () => {
     });
     return () => unsubscribe();
   }, [user, navigate]);
+
+  // Check for Stripe Connect Return
+  useEffect(() => {
+    const checkStripe = async () => {
+        // If we are waiting for stripe AND we have a code or we are simply returning
+        if (localStorage.getItem('mn_awaiting_stripe') === 'true') {
+            localStorage.removeItem('mn_awaiting_stripe');
+            setIsOnboardingStripe(true);
+            try {
+                // Parse code from URL search params (Standard Connect)
+                // Express accounts typically return without code but trigger an update
+                const params = new URLSearchParams(window.location.search);
+                const code = params.get('code') || '';
+                
+                await api.mechanic.onboardStripe(code);
+                
+                setIsStripeConnected(true);
+                notify("Success", "Stripe Account Verified!");
+                
+                // Clean URL
+                window.history.replaceState({}, document.title, window.location.pathname);
+            } catch(e) {
+                notify("Note", "Stripe verification incomplete or cancelled.");
+            } finally {
+                setIsOnboardingStripe(false);
+            }
+        }
+    };
+    checkStripe();
+  }, []);
 
   // Monitor for New Jobs and Send Notifications
   useEffect(() => {
@@ -633,34 +670,12 @@ export const MechanicDashboard: React.FC = () => {
           // 1. Get OAuth Link
           const { url } = await api.mechanic.createStripeConnectAccount();
           
-          // 2. Simulate opening window (in real app, this redirects)
-          const width = 600;
-          const height = 700;
-          const left = window.screen.width / 2 - width / 2;
-          const top = window.screen.height / 2 - height / 2;
-          
-          // Open a popup to simulate the flow
-          const popup = window.open(url, "Stripe Connect", `width=${width},height=${height},top=${top},left=${left}`);
-          
-          // 3. Poll for completion or simulate it
-          if (popup) {
-              setTimeout(() => {
-                  popup.close();
-                  api.mechanic.onboardStripe('mock_code').then(() => {
-                      setIsStripeConnected(true);
-                      notify("Success", "Stripe Express Account Connected!");
-                  });
-              }, 3000); // Simulate user filling out Stripe form
-          } else {
-              // Popup blocked, just do it inline for demo
-               await api.mechanic.onboardStripe('mock_code');
-               setIsStripeConnected(true);
-               notify("Success", "Stripe Express Account Connected!");
-          }
+          // 2. Set flag and Redirect to Stripe Express
+          localStorage.setItem('mn_awaiting_stripe', 'true');
+          window.location.href = url;
 
       } catch(e) {
           notify("Error", "Failed to connect Stripe.");
-      } finally {
           setIsOnboardingStripe(false);
       }
   };
@@ -895,6 +910,61 @@ export const MechanicDashboard: React.FC = () => {
                 </div>
             )}
             
+            {activeTab === 'earnings' && (
+                <div className="p-8 max-w-5xl mx-auto w-full overflow-y-auto pb-[env(safe-area-inset-bottom)]">
+                    <h2 className="text-3xl font-bold text-slate-900 mb-6">Earnings & Payouts</h2>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                            <p className="text-slate-500 text-sm font-bold uppercase mb-2">Today</p>
+                            <p className="text-4xl font-bold text-slate-900">${earningsStats.today.toFixed(2)}</p>
+                        </div>
+                        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                            <p className="text-slate-500 text-sm font-bold uppercase mb-2">This Week</p>
+                            <p className="text-4xl font-bold text-slate-900">${earningsStats.week.toFixed(2)}</p>
+                        </div>
+                        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                            <p className="text-slate-500 text-sm font-bold uppercase mb-2">This Month</p>
+                            <p className="text-4xl font-bold text-slate-900">${earningsStats.month.toFixed(2)}</p>
+                        </div>
+                    </div>
+
+                    <div className="bg-slate-900 text-white p-8 rounded-3xl shadow-xl flex flex-col md:flex-row items-center justify-between gap-8">
+                        <div>
+                            <h3 className="text-2xl font-bold mb-2 flex items-center gap-2">
+                                <Wallet /> MechanicNow Payouts
+                            </h3>
+                            <p className="text-slate-300 max-w-md">
+                                {isStripeConnected 
+                                    ? "Your Stripe account is connected. Earnings are automatically transferred or available for cash out." 
+                                    : "Connect a bank account or debit card to receive your earnings instantly via Stripe."}
+                            </p>
+                        </div>
+                        
+                        <div className="flex flex-col items-end gap-2">
+                            {!isStripeConnected ? (
+                                <button 
+                                    onClick={handleStripeConnect}
+                                    className="bg-white text-slate-900 px-8 py-4 rounded-xl font-bold hover:bg-blue-50 transition-colors flex items-center gap-2"
+                                >
+                                    <Link2 size={20} /> Setup Payouts
+                                </button>
+                            ) : (
+                                <button 
+                                    onClick={handleCashOut}
+                                    disabled={earningsStats.week <= 0 || isCashOutProcessing}
+                                    className="bg-green-500 text-white px-8 py-4 rounded-xl font-bold hover:bg-green-400 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-green-900/20"
+                                >
+                                    {isCashOutProcessing ? <Loader2 className="animate-spin"/> : <DollarSign size={20} />} 
+                                    Cash Out Now
+                                </button>
+                            )}
+                            {isStripeConnected && <div className="text-xs text-green-400 font-medium flex items-center gap-1"><CheckCircle size={12}/> Account Connected</div>}
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {activeTab === 'history' && (
                 <div className="p-8 max-w-5xl mx-auto w-full overflow-y-auto pb-[env(safe-area-inset-bottom)]">
                     <h2 className="text-3xl font-bold text-slate-900 mb-2">Service History</h2>
@@ -902,49 +972,27 @@ export const MechanicDashboard: React.FC = () => {
 
                     <div className="space-y-4">
                         {completedJobs.length === 0 ? (
-                            <div className="text-center py-12 bg-white rounded-3xl border border-slate-100">
-                                <p className="text-slate-400">No completed jobs yet.</p>
+                            <div className="text-center py-12 bg-white rounded-3xl border border-dashed border-slate-200">
+                                <ClipboardList size={48} className="text-slate-300 mx-auto mb-4" />
+                                <h3 className="text-xl font-bold text-slate-900 mb-2">No completed jobs yet</h3>
+                                <p className="text-slate-500">When you finish a repair, it will appear here.</p>
                             </div>
                         ) : (
                             completedJobs.map(job => (
-                                <div key={job.id} className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-all">
-                                    <div className="flex justify-between items-start mb-4">
-                                        <div>
-                                            <h3 className="text-lg font-bold text-slate-900">{job.vehicle}</h3>
-                                            <p className="text-slate-500 text-sm">{job.customerName}</p>
+                                <div key={job.id} className="bg-white p-6 rounded-2xl border border-slate-100 flex flex-col md:flex-row justify-between items-center gap-4">
+                                    <div className="flex items-center gap-4">
+                                        <div className="w-12 h-12 bg-green-100 text-green-600 rounded-full flex items-center justify-center">
+                                            <CheckCircle size={24} />
                                         </div>
-                                        <div className="text-right">
-                                            <span className="block text-2xl font-bold text-green-600">
-                                                ${(job.priceBreakdown?.mechanicPayout || 0).toFixed(2)}
-                                            </span>
-                                            <span className="text-xs text-slate-400 uppercase tracking-wider">Earned</span>
+                                        <div>
+                                            <h4 className="font-bold text-slate-900 text-lg">{job.vehicle}</h4>
+                                            <p className="text-sm text-slate-500">{job.issue} • {job.customerName}</p>
+                                            <p className="text-xs text-slate-400 mt-1">Completed on {new Date().toLocaleDateString()}</p>
                                         </div>
                                     </div>
-                                    
-                                    <div className="bg-slate-50 p-4 rounded-xl space-y-3 text-sm">
-                                        <div>
-                                            <span className="font-bold text-slate-700 block mb-1">Service Performed</span>
-                                            <p className="text-slate-600">{job.completionDetails?.description || job.issue}</p>
-                                        </div>
-                                        
-                                        {job.completionDetails?.parts && (
-                                            <div>
-                                                <span className="font-bold text-slate-700 block mb-1">Parts Used</span>
-                                                <p className="text-slate-600">{job.completionDetails.parts}</p>
-                                            </div>
-                                        )}
-
-                                        {job.completionDetails?.notes && (
-                                            <div>
-                                                <span className="font-bold text-slate-700 block mb-1">Mechanic Notes</span>
-                                                <p className="text-slate-500 italic">"{job.completionDetails.notes}"</p>
-                                            </div>
-                                        )}
-                                    </div>
-                                    
-                                    <div className="mt-4 flex justify-between items-center text-xs text-slate-400 pt-4 border-t border-slate-100">
-                                        <span>Job ID: {job.id}</span>
-                                        <span>Completed: {new Date().toLocaleDateString()}</span> 
+                                    <div className="text-right">
+                                        <p className="text-2xl font-bold text-slate-900">${job.priceBreakdown?.mechanicPayout.toFixed(2)}</p>
+                                        <p className="text-xs text-slate-500 font-bold uppercase tracking-wider">Earned</p>
                                     </div>
                                 </div>
                             ))
@@ -954,211 +1002,78 @@ export const MechanicDashboard: React.FC = () => {
             )}
 
             {activeTab === 'profile' && (
-                 <div className="p-8 max-w-4xl mx-auto w-full overflow-y-auto pb-[env(safe-area-inset-bottom)]">
-                    <h2 className="text-3xl font-bold text-slate-900 mb-2">Mechanic Profile</h2>
-                    <p className="text-slate-500 mb-8">Manage your public presence and settings.</p>
-
-                    <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-8 mb-6">
-                        <div className="flex items-center gap-6 mb-8">
-                            <img src={user.avatar} className="w-24 h-24 rounded-full border-4 border-slate-100" />
+                <div className="p-8 max-w-3xl mx-auto w-full overflow-y-auto pb-[env(safe-area-inset-bottom)]">
+                    <h2 className="text-3xl font-bold text-slate-900 mb-6">Mechanic Profile</h2>
+                    
+                    <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm mb-6">
+                        <div className="flex items-center gap-4 mb-6">
+                            <img src={user?.avatar} alt="Profile" className="w-20 h-20 rounded-full bg-slate-100" />
                             <div>
-                                <h3 className="text-2xl font-bold text-slate-900">{user.name}</h3>
-                                <div className="flex items-center gap-2 mt-2">
-                                    <span className="bg-blue-100 text-blue-700 text-xs font-bold px-2 py-1 rounded">Verified Mechanic</span>
-                                    <span className="bg-green-100 text-green-700 text-xs font-bold px-2 py-1 rounded">24/7 Available</span>
-                                </div>
+                                <h3 className="text-xl font-bold text-slate-900">{user?.name}</h3>
+                                <p className="text-slate-500">{user?.email}</p>
                             </div>
                         </div>
 
-                        <div className="space-y-6">
+                        <div className="space-y-4">
                             <div>
-                                <label className="block text-sm font-bold text-slate-700 mb-2">Public Bio</label>
+                                <label className="block text-sm font-bold text-slate-700 mb-1">Bio</label>
                                 <textarea 
-                                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl min-h-[100px] focus:ring-2 focus:ring-blue-500 outline-none"
-                                    placeholder="Tell customers about your experience..."
+                                    className="w-full p-3 border border-slate-200 rounded-xl"
+                                    rows={3}
                                     value={profileBio}
                                     onChange={(e) => setProfileBio(e.target.value)}
+                                    placeholder="Tell customers about yourself..."
                                 />
                             </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div>
-                                    <label className="block text-sm font-bold text-slate-700 mb-2">Years of Experience</label>
-                                    <input 
-                                        type="number" 
-                                        className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl" 
-                                        value={profileExp}
-                                        onChange={(e) => setProfileExp(parseInt(e.target.value) || 0)}
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-bold text-slate-700 mb-2">Hourly Rate (Estimate)</label>
-                                    <input 
-                                        type="text" 
-                                        className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl" 
-                                        placeholder="$85/hr"
-                                        disabled
-                                    />
-                                    <p className="text-xs text-slate-400 mt-1">Rates are set by platform standards.</p>
-                                </div>
-                            </div>
-
                             <div>
-                                <label className="block text-sm font-bold text-slate-700 mb-2">Specialties</label>
-                                <div className="flex flex-wrap gap-2">
-                                    {['Brakes', 'Engine', 'Diagnostics', 'Oil Change'].map(s => (
-                                        <span key={s} className="bg-slate-100 text-slate-600 px-3 py-1 rounded-full text-sm font-medium">{s}</span>
-                                    ))}
-                                    <button className="text-blue-600 text-sm font-bold hover:underline ml-2">+ Edit Skills</button>
-                                </div>
-                            </div>
-
-                            {/* Schedule Editor */}
-                            <div className="pt-6 border-t border-slate-100">
-                                <h3 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2"><Calendar size={18} /> Availability & Schedule</h3>
-                                <div className="space-y-3">
-                                    {Object.keys(schedule).map((day) => (
-                                        <div key={day} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
-                                            <div className="flex items-center gap-3">
-                                                <button 
-                                                    onClick={() => setSchedule(prev => ({ ...prev, [day]: { ...prev[day], active: !prev[day].active } }))}
-                                                    className={`w-10 h-6 rounded-full relative transition-colors ${schedule[day].active ? 'bg-green-500' : 'bg-slate-300'}`}
-                                                >
-                                                    <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all shadow-sm ${schedule[day].active ? 'left-5' : 'left-1'}`}></div>
-                                                </button>
-                                                <span className="text-sm font-bold capitalize text-slate-700 w-24">{day}</span>
-                                            </div>
-                                            
-                                            <div className={`flex items-center gap-2 ${!schedule[day].active ? 'opacity-40 pointer-events-none' : ''}`}>
-                                                <input 
-                                                    type="time" 
-                                                    className="p-1 rounded border border-slate-300 text-xs bg-white"
-                                                    value={schedule[day].start}
-                                                    onChange={(e) => setSchedule(prev => ({ ...prev, [day]: { ...prev[day], start: e.target.value } }))}
-                                                />
-                                                <span className="text-slate-400">-</span>
-                                                <input 
-                                                    type="time" 
-                                                    className="p-1 rounded border border-slate-300 text-xs bg-white"
-                                                    value={schedule[day].end}
-                                                    onChange={(e) => setSchedule(prev => ({ ...prev, [day]: { ...prev[day], end: e.target.value } }))}
-                                                />
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
+                                <label className="block text-sm font-bold text-slate-700 mb-1">Years Experience</label>
+                                <input 
+                                    type="number"
+                                    className="w-full p-3 border border-slate-200 rounded-xl"
+                                    value={profileExp}
+                                    onChange={(e) => setProfileExp(parseInt(e.target.value))}
+                                />
                             </div>
                         </div>
-                        
-                        <div className="mt-8 pt-8 border-t border-slate-100 flex justify-end">
-                            <button onClick={handleSaveProfile} className="bg-slate-900 text-white px-6 py-3 rounded-xl font-bold hover:bg-slate-800 flex items-center gap-2">
-                                <Save size={18}/> Save Changes
-                            </button>
-                        </div>
                     </div>
-                 </div>
-            )}
 
-            {activeTab === 'earnings' && (
-                <div className="p-8 max-w-5xl mx-auto w-full overflow-y-auto pb-[env(safe-area-inset-bottom)]">
-                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
-                        <div>
-                            <h2 className="text-3xl font-bold text-slate-900">Earnings & Payouts</h2>
-                            <p className="text-slate-500">Manage your finances and transfer funds.</p>
-                        </div>
-                        
-                        {isStripeConnected ? (
-                            <button 
-                                onClick={handleCashOut}
-                                disabled={earningsStats.week <= 0 || isCashOutProcessing}
-                                className="bg-green-600 text-white px-8 py-4 rounded-xl font-bold shadow-lg shadow-green-200 hover:bg-green-500 disabled:opacity-50 flex items-center gap-3 transition-all active:scale-95"
-                            >
-                                {isCashOutProcessing ? <Loader2 className="animate-spin" /> : <><Wallet size={20}/> Cash Out Now</>}
-                            </button>
-                        ) : (
-                             <button 
-                                onClick={handleStripeConnect}
-                                disabled={isOnboardingStripe}
-                                className="bg-slate-900 text-white px-8 py-4 rounded-xl font-bold shadow-lg hover:bg-slate-800 disabled:opacity-50 flex items-center gap-3 transition-all active:scale-95"
-                            >
-                                {isOnboardingStripe ? <Loader2 className="animate-spin" /> : <><Link2 size={20}/> Connect Stripe Express</>}
-                            </button>
-                        )}
-                    </div>
-                    
-                    {!isStripeConnected && (
-                        <div className="mb-8 bg-indigo-600 text-white p-6 rounded-3xl shadow-xl relative overflow-hidden border border-indigo-500">
-                            <div className="absolute right-0 top-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
-                            <div className="flex items-start gap-6 relative z-10">
-                                <div className="p-4 bg-white/20 backdrop-blur rounded-2xl shadow-inner">
-                                    <Banknote size={32} />
-                                </div>
-                                <div className="flex-1">
-                                    <h3 className="text-xl font-bold mb-2">Get Paid Faster with Stripe Express</h3>
-                                    <p className="text-indigo-100 text-sm mb-4 max-w-lg leading-relaxed">
-                                        Link your bank account or debit card to receive instant payouts for completed jobs. Securely managed by Stripe Connect for gig workers.
-                                    </p>
-                                    <button onClick={handleStripeConnect} className="bg-white text-indigo-600 px-6 py-2 rounded-lg font-bold text-sm hover:bg-indigo-50">
-                                        Setup Payouts
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
-                            <p className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-2">Today</p>
-                            <p className="text-3xl font-bold text-slate-900">${earningsStats.today.toFixed(2)}</p>
-                        </div>
-                        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
-                            <p className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-2">This Week</p>
-                            <p className="text-3xl font-bold text-slate-900">${earningsStats.week.toFixed(2)}</p>
-                        </div>
-                        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
-                            <p className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-2">This Month</p>
-                            <p className="text-3xl font-bold text-slate-900">${earningsStats.month.toFixed(2)}</p>
-                        </div>
-                    </div>
+                    <button onClick={handleSaveProfile} className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold hover:bg-blue-500 shadow-lg shadow-blue-200">
+                        Save Changes
+                    </button>
                 </div>
             )}
         </div>
-
-        {/* Navigation Prompt Modal */}
-        {navPromptJob && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-                <div className="bg-white rounded-2xl p-6 max-w-sm w-full animate-scale-up">
-                    <h3 className="text-xl font-bold mb-2">Start Navigation?</h3>
-                    <p className="text-slate-500 mb-6 text-sm">Would you like to open maps to the customer's location?</p>
-                    <div className="flex gap-3">
-                        <button 
-                            onClick={() => handleConfirmNavigation(false)}
-                            className="flex-1 py-3 bg-slate-100 text-slate-700 font-bold rounded-xl"
-                        >
-                            No, Just Accept
-                        </button>
-                        <button 
-                            onClick={() => handleConfirmNavigation(true)}
-                            className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl flex items-center justify-center gap-2"
-                        >
-                            <Navigation size={16} /> Start Nav
-                        </button>
-                    </div>
-                </div>
-            </div>
+        
+        {/* Modals */}
+        {showCompletionModal && activeJob && (
+             <CompletionModal 
+                job={activeJob} 
+                onClose={handleCloseCompletionModal} 
+                onComplete={handleProcessPayment} 
+             />
         )}
-
-        {/* Chat Modal */}
         {chatJob && (
             <JobChat job={chatJob} onClose={() => setChatJob(null)} />
         )}
-
-        {/* Completion Modal */}
-        {showCompletionModal && activeJob && (
-            <CompletionModal 
-                job={activeJob} 
-                onClose={handleCloseCompletionModal} 
-                onComplete={handleProcessPayment}
-            />
+        {navPromptJob && (
+             <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                <div className="bg-white rounded-2xl p-6 max-w-sm w-full animate-scale-up text-center">
+                    <Navigation size={48} className="text-blue-600 mx-auto mb-4" />
+                    <h3 className="text-xl font-bold text-slate-900 mb-2">Open Navigation?</h3>
+                    <p className="text-slate-500 mb-6">We can open Google Maps to guide you to the customer's location.</p>
+                    <div className="flex gap-3">
+                        <button onClick={() => handleConfirmNavigation(false)} className="flex-1 py-3 bg-slate-100 text-slate-700 font-bold rounded-xl">No, Just Accept</button>
+                        <button onClick={() => handleConfirmNavigation(true)} className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl">Open Maps</button>
+                    </div>
+                </div>
+             </div>
+        )}
+        {isOnboardingStripe && (
+             <div className="fixed inset-0 z-[70] bg-white/80 backdrop-blur-md flex flex-col items-center justify-center">
+                 <Loader2 size={64} className="text-blue-600 animate-spin mb-4" />
+                 <h3 className="text-2xl font-bold text-slate-900">Connecting to Stripe...</h3>
+                 <p className="text-slate-500">Please wait while we verify your payout details.</p>
+             </div>
         )}
     </div>
   );

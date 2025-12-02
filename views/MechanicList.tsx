@@ -1,10 +1,18 @@
 
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Star, Clock, Award, ShieldCheck, ArrowLeft, MapPin as MapPinIcon, ChevronRight, CheckCircle, Zap, Calendar, Loader2, CreditCard, Banknote, X, Wrench, Wallet, Lock, FileText } from 'lucide-react';
 import { Vehicle, ServiceItem, Mechanic, JobRequest, PriceBreakdown, PaymentMethod, GeoLocation, ServiceType } from '../types';
 import { useApp } from '../App';
 import { api } from '../services/api';
+
+// Stripe Imports
+import { loadStripe } from '@stripe/stripe-js';
+import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
+
+// Initialize Stripe with Public Key (Env variable recommended)
+const stripePromise = loadStripe('pk_test_51O4p0dJ9...'); // Replace with process.env.VITE_STRIPE_PUBLISHABLE_KEY
 
 const getAvailabilityColor = (status: string) => {
   switch (status) {
@@ -173,43 +181,35 @@ const MechanicProfileView = ({ mechanic, onBack, onBook, totalPrice }: { mechani
   </div>
 );
 
-// Stripe Elements UI Simulation/Wrapper
-const StripeCardInput = () => (
-  <div className="bg-white p-4 rounded-xl border border-slate-200 focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 transition-all shadow-sm">
-    <div className="flex justify-between items-center mb-3">
-        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
-            <Lock size={10} /> Secure Card Payment (Stripe)
-        </label>
-        <div className="flex gap-1">
-            <div className="w-8 h-5 bg-slate-100 rounded border border-slate-200 flex items-center justify-center"><span className="text-[6px] font-bold text-slate-400">VISA</span></div>
-            <div className="w-8 h-5 bg-slate-100 rounded border border-slate-200 flex items-center justify-center"><span className="text-[6px] font-bold text-slate-400">MC</span></div>
-        </div>
-    </div>
-    <div className="flex items-center gap-3">
-        <CreditCard size={20} className="text-slate-400 flex-shrink-0" />
-        <div className="flex-1 grid grid-cols-4 gap-4">
-            <input 
-                type="text" 
-                placeholder="Card number" 
-                className="col-span-2 outline-none text-sm text-slate-900 placeholder:text-slate-300 bg-transparent"
-                defaultValue="4242 4242 4242 4242"
-            />
-            <input 
-                type="text" 
-                placeholder="MM/YY" 
-                className="outline-none text-sm text-slate-900 placeholder:text-slate-300 bg-transparent text-center"
-                defaultValue="12/25"
-            />
-            <input 
-                type="text" 
-                placeholder="CVC" 
-                className="outline-none text-sm text-slate-900 placeholder:text-slate-300 bg-transparent text-center"
-                defaultValue="123"
+// Real Stripe Elements Wrapper
+const StripePaymentForm = ({ onChange }: { onChange: (complete: boolean) => void }) => {
+    return (
+        <div className="bg-white p-4 rounded-xl border border-slate-200 focus-within:ring-2 focus-within:ring-blue-500 transition-all shadow-sm">
+             <div className="flex justify-between items-center mb-3">
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                    <Lock size={10} /> Secure Payment (Stripe)
+                </label>
+            </div>
+            <CardElement 
+                options={{
+                    style: {
+                        base: {
+                            fontSize: '16px',
+                            color: '#0f172a',
+                            '::placeholder': {
+                                color: '#94a3b8',
+                            },
+                        },
+                        invalid: {
+                            color: '#ef4444',
+                        },
+                    },
+                }}
+                onChange={(e) => onChange(e.complete)}
             />
         </div>
-    </div>
-  </div>
-);
+    );
+};
 
 const BookingConfirmationView = ({ mechanic, vehicle, services, date, time, location, totalPrice, onConfirm, onBack, isProcessing, onUpdateServices, availableServices }: {
     mechanic: Mechanic, 
@@ -219,7 +219,7 @@ const BookingConfirmationView = ({ mechanic, vehicle, services, date, time, loca
     time: string, 
     location: string, 
     totalPrice: number, 
-    onConfirm: (paymentMethod?: PaymentMethod, priceBreakdown?: PriceBreakdown) => void, 
+    onConfirm: (paymentMethod: PaymentMethod | undefined, breakdown: PriceBreakdown, paymentIntentId?: string) => void, 
     onBack: () => void,
     isProcessing: boolean,
     onUpdateServices: (services: ServiceItem[]) => void,
@@ -230,6 +230,11 @@ const BookingConfirmationView = ({ mechanic, vehicle, services, date, time, loca
     const [localServices, setLocalServices] = useState<ServiceItem[]>(services);
     const [paymentType, setPaymentType] = useState<'CARD' | 'CASH'>('CARD');
     const [agreedToTerms, setAgreedToTerms] = useState(false);
+    const [cardComplete, setCardComplete] = useState(false);
+    const [localProcessing, setLocalProcessing] = useState(false);
+    
+    const stripe = useStripe();
+    const elements = useElements();
 
     useEffect(() => {
         setLocalServices(services);
@@ -261,6 +266,47 @@ const BookingConfirmationView = ({ mechanic, vehicle, services, date, time, loca
 
         return { subtotal, tax, total, platformFee, mechanicPayout };
     }, [currentTotal]);
+
+    const handlePayAndBook = async () => {
+        if (!agreedToTerms) return;
+        setLocalProcessing(true);
+
+        try {
+            if (paymentType === 'CARD') {
+                if (!stripe || !elements) return;
+
+                // 1. Create Payment Intent via Backend to get Secret
+                // Passing mechanic ID for Split Payment
+                const { clientSecret, id } = await api.payment.createPaymentIntent(Math.round(breakdown.total * 100), 'usd', mechanic.id);
+
+                // 2. Confirm Card Payment via Stripe.js
+                const result = await stripe.confirmCardPayment(clientSecret, {
+                    payment_method: {
+                        card: elements.getElement(CardElement)!,
+                    }
+                });
+
+                if (result.error) {
+                    alert(result.error.message);
+                    setLocalProcessing(false);
+                    return;
+                }
+
+                if (result.paymentIntent?.status === 'succeeded') {
+                    // 3. Complete Booking
+                    onConfirm({ id: 'pm_stripe', type: 'CARD', last4: '4242', brand: 'Visa' }, breakdown, id);
+                }
+
+            } else {
+                // Cash Flow
+                onConfirm({ id: 'pm_cash', type: 'CASH', last4: '', brand: '' }, breakdown);
+            }
+        } catch (error) {
+            console.error(error);
+            alert("Payment failed. Please try again.");
+            setLocalProcessing(false);
+        }
+    };
 
     return (
         <div className="min-h-screen bg-gray-50 pt-24 pb-10 px-4 animate-fade-in flex items-center justify-center">
@@ -325,7 +371,7 @@ const BookingConfirmationView = ({ mechanic, vehicle, services, date, time, loca
                                         <Lock size={14} className="mt-0.5 flex-shrink-0" />
                                         <span>Secured by Stripe Connect. Funds are held safely until the job is completed.</span>
                                     </div>
-                                    <StripeCardInput />
+                                    <StripePaymentForm onChange={setCardComplete} />
                                 </div>
                             ) : (
                                 <div className="p-3 bg-white rounded-xl border border-slate-200 flex items-center gap-3 shadow-sm">
@@ -428,17 +474,17 @@ const BookingConfirmationView = ({ mechanic, vehicle, services, date, time, loca
                     <div className="flex gap-4 pt-2">
                         <button 
                             onClick={onBack} 
-                            disabled={isProcessing}
+                            disabled={localProcessing}
                             className="flex-1 py-4 rounded-xl font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors disabled:opacity-50"
                         >
                             Back
                         </button>
                         <button 
-                            onClick={() => onConfirm({ id: 'pm_prod', type: paymentType, last4: '4242', brand: 'Visa' }, breakdown)} 
-                            disabled={isProcessing || localServices.length === 0 || !agreedToTerms}
+                            onClick={handlePayAndBook} 
+                            disabled={localProcessing || localServices.length === 0 || !agreedToTerms || (paymentType === 'CARD' && !cardComplete)}
                             className="flex-[2] py-4 rounded-xl font-bold text-white bg-blue-600 hover:bg-blue-500 shadow-lg shadow-blue-200 transition-colors flex justify-center items-center gap-2 disabled:opacity-50 disabled:bg-slate-300 disabled:shadow-none disabled:cursor-not-allowed"
                         >
-                            {isProcessing ? <Loader2 className="animate-spin" /> : <><CheckCircle size={16} /> Book Appointment</>}
+                            {localProcessing ? <Loader2 className="animate-spin" /> : <><CheckCircle size={16} /> Book Appointment</>}
                         </button>
                     </div>
                 </div>
@@ -569,21 +615,13 @@ export const MechanicList: React.FC = () => {
     setIsConfirming(true);
   };
 
-  const handleConfirmBooking = async (paymentMethod: PaymentMethod | undefined, breakdown: PriceBreakdown | undefined) => {
+  const handleConfirmBooking = async (paymentMethod: PaymentMethod | undefined, breakdown: PriceBreakdown, paymentIntentId?: string) => {
     if (!selectedMechanic || !breakdown) return;
     
     setIsProcessing(true);
 
     try {
-        // 1. Create Payment Intent (if card)
-        if (paymentMethod?.type === 'CARD') {
-            // Pass mechanic ID to facilitate Stripe Connect destination charge/transfer
-            await api.payment.createPaymentIntent(breakdown.total * 100, 'usd', selectedMechanic.id);
-            // Simulate Stripe confirmation delay
-            await new Promise(r => setTimeout(r, 1000));
-        }
-
-        // 2. Create Job
+        // Create Job
         const jobId = `job_${Date.now()}`;
         const newJob: JobRequest = {
             id: jobId,
@@ -621,27 +659,29 @@ export const MechanicList: React.FC = () => {
         });
     } catch (error) {
         console.error(error);
-        notify('Error', 'Failed to confirm booking. Please check payment details.');
+        notify('Error', 'Failed to confirm booking. Please check details.');
         setIsProcessing(false);
     }
   };
 
   if (isConfirming && selectedMechanic) {
       return (
-        <BookingConfirmationView 
-            mechanic={selectedMechanic}
-            vehicle={vehicle}
-            services={currentServices}
-            date={date}
-            time={time}
-            location={location}
-            totalPrice={totalPrice}
-            onBack={() => setIsConfirming(false)}
-            onConfirm={handleConfirmBooking}
-            isProcessing={isProcessing}
-            onUpdateServices={setCurrentServices}
-            availableServices={availableServices}
-        />
+        <Elements stripe={stripePromise}>
+            <BookingConfirmationView 
+                mechanic={selectedMechanic}
+                vehicle={vehicle}
+                services={currentServices}
+                date={date}
+                time={time}
+                location={location}
+                totalPrice={totalPrice}
+                onBack={() => setIsConfirming(false)}
+                onConfirm={handleConfirmBooking}
+                isProcessing={isProcessing}
+                onUpdateServices={setCurrentServices}
+                availableServices={availableServices}
+            />
+        </Elements>
       );
   }
 

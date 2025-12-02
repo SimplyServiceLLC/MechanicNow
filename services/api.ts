@@ -1,4 +1,5 @@
 
+
 import { UserProfile, JobRequest, PaymentMethod, Mechanic, MechanicRegistrationData } from '../types';
 import * as firebaseApp from 'firebase/app';
 import * as firebaseAuth from 'firebase/auth';
@@ -135,21 +136,10 @@ const MockApi = {
     // Mock Stripe Create Payment Intent with Connect logic
     createPaymentIntent: async (amount: number, currency: string = 'usd', mechanicId?: string) => {
         await delay(800);
-        
-        if (mechanicId) {
-            const fee = Math.round(amount * 0.20);
-            const transfer = amount - fee;
-            console.log(`%c[Stripe Connect] Creating PaymentIntent: ${(amount/100).toFixed(2)} ${currency}`, 'color: #635bff; font-weight: bold;');
-            console.log(`%c[Stripe Connect] Application Fee: ${(fee/100).toFixed(2)} ${currency}`, 'color: #ef4444;');
-            console.log(`%c[Stripe Connect] Transfer to Connected Acct (${mechanicId}): ${(transfer/100).toFixed(2)} ${currency}`, 'color: #10b981;');
-        }
-
         return { clientSecret: 'pi_mock_secret_12345_secret_54321', id: 'pi_mock_12345' };
     },
     authorize: async (amount: number, method: PaymentMethod) => {
         await delay(1500);
-        // Simulate card processing
-        if (amount > 5000) throw new Error("Card declined - Limit Exceeded");
         return { success: true, transactionId: `tx_${Math.random().toString(36).substr(2, 9)}` };
     },
     capture: async (jobId: string, amount: number) => {
@@ -160,12 +150,10 @@ const MockApi = {
   },
   notifications: {
       sendSMS: async (phone: string, message: string) => {
-          // In real implementation, this would call a Cloud Function connecting to Twilio
           console.log(`%c[Twilio SMS] To ${phone}: ${message}`, 'color: #ec4899; font-weight: bold; padding: 4px; border: 1px solid #ec4899; border-radius: 4px;');
           return true;
       },
       sendEmail: async (email: string, subject: string, body: string) => {
-          // In real implementation, this would call a Cloud Function connecting to SendGrid
           console.log(`%c[SendGrid Email] To ${email}: ${subject}`, 'color: #3b82f6; font-weight: bold; padding: 4px; border: 1px solid #3b82f6; border-radius: 4px;');
           return true;
       }
@@ -190,10 +178,10 @@ const MockApi = {
         const newMechanic: Mechanic = {
             id: `mech_${Date.now()}`,
             name: data.name,
-            rating: 5.0, // New mechanic starts fresh
+            rating: 5.0, 
             jobsCompleted: 0,
             avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(data.name)}&background=10b981&color=fff`,
-            distance: '0.5 mi', // Mock distance relative to user
+            distance: '0.5 mi',
             eta: 'Available Now',
             availability: 'Available Now',
             yearsExperience: data.yearsExperience,
@@ -203,11 +191,9 @@ const MockApi = {
             reviews: []
         };
         
-        // 1. Add to mechanics list for booking flow
         const existingMechanics = getDbItem<Mechanic[]>('mn_registered_mechanics', []);
         setDbItem('mn_registered_mechanics', [newMechanic, ...existingMechanics]);
 
-        // 2. Log them in as a user
         const newUser: UserProfile = {
             id: newMechanic.id,
             name: data.name,
@@ -218,24 +204,16 @@ const MockApi = {
             isMechanic: true
         };
         setDbItem('mn_user', newUser);
-        
-        // 3. Send Welcome Email
         await MockApi.notifications.sendEmail(data.email, "Welcome to MechanicNow", "Your application is under review.");
-        
         return newUser;
     },
     verifyBackground: async (email: string, ssn: string) => {
         await delay(2000);
-        console.log(`[Checkr Mock] Initiating background check for ${email}`);
         return { status: 'pending', checkId: 'checkr_123' };
     },
     getNearbyMechanics: async (lat: number, lng: number): Promise<Mechanic[]> => {
       await delay(600);
       const storedMechanics = getDbItem<Mechanic[]>('mn_registered_mechanics', []);
-      
-      // GENERATE LIVE GHOST MECHANICS FOR "UBER-LIKE" FEEL
-      // This ensures wherever the user looks in the US, there are mechanics nearby.
-      // In a real app, this would be a GeoQuery to Firestore.
       const ghostMechanics: Mechanic[] = Array.from({ length: 4 }).map((_, i) => ({
           id: `sim_${i}_${Date.now()}`,
           name: ['Mike R.', 'Sarah L.', 'Dave C.', 'Jose M.'][i],
@@ -245,13 +223,12 @@ const MockApi = {
           distance: `${(Math.random() * 3).toFixed(1)} mi`,
           eta: `${10 + Math.floor(Math.random() * 20)} min`,
           availability: 'Available Now',
-          lat: lat + (Math.random() - 0.5) * 0.03, // Spread around location
+          lat: lat + (Math.random() - 0.5) * 0.03, 
           lng: lng + (Math.random() - 0.5) * 0.03,
           specialties: ['Brakes', 'Oil', 'General'],
           yearsExperience: 5
       }));
       
-      // Explicitly include mechanic 'm1' with 'Available Now' status
       const m1Mechanic: Mechanic = {
           id: 'm1',
           name: 'Top Rated Pro (m1)',
@@ -269,10 +246,8 @@ const MockApi = {
           certifications: ['ASE Master', 'Hybrid Specialist']
       };
       
-      // If the current user is a mechanic, ensure they are in the list with their latest status
       const currentUser = getDbItem<UserProfile | null>('mn_user', null);
       let finalList = [m1Mechanic, ...storedMechanics, ...ghostMechanics];
-
       return finalList;
     },
     getDashboardData: async () => {
@@ -285,15 +260,13 @@ const MockApi = {
       };
     },
     createStripeConnectAccount: async () => {
-        // Simulating OAuth Link generation for Express Account
         await delay(800);
         return { 
-            url: 'https://connect.stripe.com/express/onboarding?client_id=ca_mock_12345&state=mock_state',
+            url: window.location.href + '?code=mock_auth_code', // Mock redirect loop
             accountId: 'acct_mock_12345'
         };
     },
-    onboardStripe: async (authCode: string) => {
-        // Simulating Backend exchanging code for access token
+    onboardStripe: async (authCode?: string) => {
         await delay(1500);
         setDbItem('mn_stripe_connected', true);
         return { success: true, stripeId: 'acct_mock_12345' };
@@ -301,15 +274,13 @@ const MockApi = {
     payoutToBank: async (amount: number) => {
         await delay(2000);
         const current = getDbItem('mn_earnings_stats', DEFAULT_EARNINGS);
-        const updated = { ...current, week: 0 }; // Reset available balance
+        const updated = { ...current, week: 0 };
         setDbItem('mn_earnings_stats', updated);
         return { success: true, payoutId: `po_${Date.now()}` };
     },
     createJobRequest: async (job: JobRequest) => {
       const requests = getDbItem<JobRequest[]>('mn_dashboard_requests', MOCK_REQUESTS);
       setDbItem('mn_dashboard_requests', [job, ...requests]);
-      
-      // Notify Mechanic via SMS (Simulated Twilio)
       if (job.mechanicId) {
           MockApi.notifications.sendSMS("+15550000000", `New Job: ${job.vehicle} - ${job.issue}. Payout: $${job.payout.toFixed(2)}`);
       }
@@ -317,51 +288,11 @@ const MockApi = {
     },
     updateStatus: async (isOnline: boolean) => { 
         setDbItem('mn_is_online', isOnline); 
-        
-        // Sync with registry for demo purposes so user appears/disappears in search
-        const currentUser = getDbItem<UserProfile | null>('mn_user', null);
-        if (currentUser && currentUser.isMechanic) {
-            const mechanics = getDbItem<Mechanic[]>('mn_registered_mechanics', []);
-            // Check if mechanic exists in registry, if not add them
-            const exists = mechanics.find(m => m.id === currentUser.id);
-            let updated;
-            if (exists) {
-                updated = mechanics.map(m => 
-                    m.id === currentUser.id 
-                    ? { ...m, availability: isOnline ? 'Available Now' : 'Offline' }
-                    : m
-                );
-            } else {
-                 // Create temp mechanic profile for them if they aren't registered properly
-                 const newMech: Mechanic = {
-                     id: currentUser.id,
-                     name: currentUser.name,
-                     rating: 5.0,
-                     jobsCompleted: 0,
-                     avatar: currentUser.avatar,
-                     distance: '0.1 mi',
-                     eta: 'Nearby',
-                     availability: isOnline ? 'Available Now' : 'Offline',
-                     yearsExperience: 5
-                 };
-                 updated = [newMech, ...mechanics];
-            }
-            setDbItem('mn_registered_mechanics', updated);
-        }
-        
         return isOnline; 
     },
     updateJobRequest: async (updatedJob: JobRequest) => {
       const requests = getDbItem<JobRequest[]>('mn_dashboard_requests', MOCK_REQUESTS);
       setDbItem('mn_dashboard_requests', requests.map(r => r.id === updatedJob.id ? updatedJob : r));
-      
-      // Notify Customer of changes via SMS (Simulated Twilio)
-      if (updatedJob.status === 'ACCEPTED') {
-          MockApi.notifications.sendSMS("+15550000000", `MechanicNow: Your mechanic is on the way! Track them in the app.`);
-      } else if (updatedJob.status === 'ARRIVED') {
-           MockApi.notifications.sendSMS("+15550000000", `MechanicNow: Your mechanic has arrived.`);
-      }
-
       return updatedJob;
     },
     updateLocation: async (jobId: string, lat: number, lng: number) => {
@@ -437,15 +368,11 @@ const RealApi = {
         const cred = await signInWithEmailAndPassword(auth, email, password);
         user = cred.user;
       } catch (e: any) {
-        // Handle "User Not Found" or "Invalid Credential" (which might be user not found)
-        // Note: 'auth/invalid-login-credentials' is generic for security, so we might try to register and catch 'email-already-in-use' if it was actually just a bad password
         if (e.code === 'auth/user-not-found' || e.code === 'auth/invalid-credential' || e.code === 'auth/invalid-login-credentials' || e.code === 'auth/invalid-email') {
              try {
-                 // Implicit registration for seamless UX
                  const cred = await createUserWithEmailAndPassword(auth, email, password);
                  user = cred.user;
                  await updateProfile(user, { displayName: name });
-                 // Create initial user doc
                  await setDoc(doc(db, 'users', user.uid), { 
                      name: name || email.split('@')[0], 
                      email, 
@@ -469,7 +396,6 @@ const RealApi = {
         const userDoc = await getDoc(doc(db, 'users', user.uid));
         return mapUser(user, userDoc.data());
       } catch (e) {
-        // Fallback if doc fetch fails
         return mapUser(user);
       }
     },
@@ -493,7 +419,6 @@ const RealApi = {
 
     updateProfile: async (user: UserProfile) => {
       if (!auth?.currentUser) throw new Error("Not authenticated");
-      
       const updateData: any = {
           name: user.name,
           email: user.email,
@@ -502,7 +427,6 @@ const RealApi = {
           vehicles: JSON.parse(JSON.stringify(user.vehicles)),
           history: JSON.parse(JSON.stringify(user.history))
       };
-
       await updateDoc(doc(db, 'users', auth.currentUser.uid), updateData);
       return user;
     },
@@ -516,21 +440,34 @@ const RealApi = {
   payment: {
     // Calls Firebase Cloud Function 'createPaymentIntent'
     createPaymentIntent: async (amount: number, currency: string = 'usd', mechanicId?: string) => {
-        if (!functions) throw new Error("Functions not initialized");
+        if (!functions || !db) throw new Error("Functions not initialized");
+
+        // Resolve Stripe Connect Account ID from mechanic's profile if possible
+        let stripeDestination = undefined;
+        if (mechanicId) {
+             try {
+                 const mechDoc = await getDoc(doc(db, 'mechanics', mechanicId));
+                 if (mechDoc.exists() && mechDoc.data().stripeAccountId) {
+                     stripeDestination = mechDoc.data().stripeAccountId;
+                 }
+             } catch(e) {
+                 console.warn("Could not resolve Stripe Account ID", e);
+             }
+        }
+
         const createPaymentIntentFn = httpsCallable(functions, 'createPaymentIntent');
         
         try {
-            const result: any = await createPaymentIntentFn({ amount, currency, mechanicStripeId: mechanicId });
+            // Pass the split payment details to the backend
+            const result: any = await createPaymentIntentFn({ amount, currency, mechanicStripeId: stripeDestination });
             return result.data as { clientSecret: string, id: string };
         } catch (e: any) {
             console.error("Payment Intent Error:", e);
             throw new Error(e.message || "Failed to initiate payment");
         }
     },
-    // We assume card authorization happens via Stripe Elements on frontend
     authorize: async (amount: number, method: PaymentMethod) => {
-        // This is primarily a stub for the Stripe Elements workflow which handles auth internally
-        // In a real app, this might log the attempt
+        // Wrapper for logging; actual auth happens via Stripe Elements on client
         return { success: true, transactionId: `tx_${Date.now()}` };
     },
     // Calls Firebase Cloud Function 'capturePayment'
@@ -602,12 +539,10 @@ const RealApi = {
         if (!auth || !db) throw new Error("Firebase not initialized");
         if (!data.password) throw new Error("Password required");
 
-        // 1. Create Auth User
         const cred = await createUserWithEmailAndPassword(auth, data.email, data.password);
         const user = cred.user;
         await updateProfile(user, { displayName: data.name });
 
-        // 2. Create User Profile
         await setDoc(doc(db, 'users', user.uid), {
             name: data.name,
             email: data.email,
@@ -618,11 +553,10 @@ const RealApi = {
             createdAt: serverTimestamp()
         });
 
-        // 3. Create Mechanic Profile
         const mechanicData: Partial<Mechanic> = {
             id: user.uid,
             name: data.name,
-            rating: 5.0, // Start with 5 stars (New)
+            rating: 5.0, 
             jobsCompleted: 0,
             avatar: user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(data.name)}&background=10b981&color=fff`,
             bio: data.bio,
@@ -631,12 +565,11 @@ const RealApi = {
             certifications: data.certifications,
             availability: 'Offline',
             reviews: [],
-            lat: 36.8508, // Default location (Hampton Roads, VA)
+            lat: 36.8508, 
             lng: -76.2859
         };
         await setDoc(doc(db, 'mechanics', user.uid), mechanicData);
         
-        // 4. Send Welcome Email via Cloud Function
         await RealApi.notifications.sendEmail(data.email, "Welcome to MechanicNow", "Your application is under review.");
 
         return mapUser(user, { name: data.name });
@@ -654,14 +587,11 @@ const RealApi = {
     },
     getNearbyMechanics: async (lat: number, lng: number): Promise<Mechanic[]> => {
        if (!db) return [];
-       // Real Geo-query would involve GeoFire or Geohash range queries.
-       // For this implementation, we fetch active mechanics and filter in client (acceptable for MVP volume).
        const q = query(collection(db, 'mechanics'), where('availability', '!=', 'Offline'));
        const snapshot = await getDocs(q);
        
        return snapshot.docs.map(d => {
            const data = d.data();
-           // In real app, calculate actual distance using Haversine
            const mockDist = Math.sqrt(Math.pow(data.lat - lat, 2) + Math.pow(data.lng - lng, 2)) * 69; 
            
            return {
@@ -687,10 +617,7 @@ const RealApi = {
     getDashboardData: async () => {
       if (!auth?.currentUser) throw new Error("Not authenticated");
       
-      // Perform two specific queries to comply with Security Rules
-      // 1. Open Jobs (NEW)
       const qNew = query(collection(db, 'job_requests'), where('status', '==', 'NEW'), limit(50));
-      // 2. My Jobs (Assigned)
       const qMy = query(collection(db, 'job_requests'), where('mechanicId', '==', auth.currentUser.uid), limit(50));
       
       const [snapNew, snapMy] = await Promise.all([getDocs(qNew), getDocs(qMy)]);
@@ -699,7 +626,6 @@ const RealApi = {
       snapNew.docs.forEach(d => requestsMap.set(d.id, { id: d.id, ...convertTimestamps(d.data()) }));
       snapMy.docs.forEach(d => requestsMap.set(d.id, { id: d.id, ...convertTimestamps(d.data()) }));
       
-      // Merge and Sort
       const requests = Array.from(requestsMap.values()).sort((a:any, b:any) => {
            const tA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
            const tB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
@@ -724,21 +650,31 @@ const RealApi = {
     },
     
     onboardStripe: async (authCode?: string) => {
-         if (!auth?.currentUser || !db) throw new Error("Error");
-         // In a real flow, the webhook from Stripe would update the DB, but we can double check status here
-         await updateDoc(doc(db, 'mechanics', auth.currentUser.uid), { stripeConnected: true });
-         return { success: true };
+         if (!functions) throw new Error("Functions not initialized");
+         const onboardFn = httpsCallable(functions, 'onboardStripe');
+         try {
+             // Pass the authorization code if using standard connect, or just trigger verification
+             const result: any = await onboardFn({ code: authCode });
+             
+             // Update local firestore to reflect connected status if function doesn't do it
+             if (result.data?.success && auth.currentUser) {
+                 await updateDoc(doc(db, 'mechanics', auth.currentUser.uid), { stripeConnected: true });
+             }
+             
+             return result.data;
+         } catch(e: any) {
+             console.error("Stripe Onboarding Failed", e);
+             throw new Error("Stripe Onboarding Failed");
+         }
     },
 
     payoutToBank: async (amount: number) => {
         if (!auth?.currentUser || !db || !functions) throw new Error("Error");
         
-        // Call cloud function to initiate transfer
         const payoutFn = httpsCallable(functions, 'payoutToBank');
         try {
             await payoutFn({ amount });
             
-            // Optimistically update local UI while server processes
             const ref = doc(db, 'mechanics', auth.currentUser.uid);
             await updateDoc(ref, { "earnings.week": 0 });
             return { success: true };
@@ -749,7 +685,6 @@ const RealApi = {
 
     createJobRequest: async (job: JobRequest) => {
         if (!db) throw new Error("Database not connected");
-        // Ensure no undefined values which crash Firestore
         const safeJob = JSON.parse(JSON.stringify({ 
             ...job, 
             customerId: auth.currentUser?.uid,
@@ -758,7 +693,6 @@ const RealApi = {
         
         await setDoc(doc(db, 'job_requests', job.id), safeJob);
         
-        // Notify Mechanic via Cloud Function
         if (job.mechanicId) {
             RealApi.notifications.sendSMS("+15550000000", `New Job Request: ${job.vehicle}`);
         }
@@ -775,11 +709,10 @@ const RealApi = {
     updateJobRequest: async (updatedJob: JobRequest) => {
        if (!db) throw new Error("Database not connected");
        const safeJob = JSON.parse(JSON.stringify(updatedJob));
-       delete safeJob.createdAt; // Don't overwrite timestamp
+       delete safeJob.createdAt;
        
        await updateDoc(doc(db, 'job_requests', updatedJob.id), safeJob);
        
-       // Notify Customer via Cloud Function
        if (updatedJob.status === 'ACCEPTED') {
           RealApi.notifications.sendSMS("+15550000000", `MechanicNow: Your mechanic is on the way!`);
        } else if (updatedJob.status === 'ARRIVED') {
@@ -804,14 +737,12 @@ const RealApi = {
        if (!auth?.currentUser) return DEFAULT_EARNINGS;
        
        const statsRef = doc(db, 'mechanics', auth.currentUser.uid);
-       // Use atomic increment for safety
        await updateDoc(statsRef, {
            "earnings.today": increment(amount),
            "earnings.week": increment(amount),
            "earnings.month": increment(amount)
        });
        
-       // Return estimated new values (UI will update via subscription anyway)
        return { today: 0, week: 0, month: 0 }; 
     },
 
@@ -829,17 +760,13 @@ const RealApi = {
     subscribeToDashboard: (callback: (data: any) => void) => {
         if (!db || !auth.currentUser) return () => {};
         
-        // 1. Listen for NEW requests (Open Market)
         const qNew = query(collection(db, 'job_requests'), where('status', '==', 'NEW'), limit(50));
-        
-        // 2. Listen for MY jobs (Active/Completed)
         const qMy = query(collection(db, 'job_requests'), where('mechanicId', '==', auth.currentUser.uid), limit(50));
         
         let newJobs: JobRequest[] = [];
         let myJobs: JobRequest[] = [];
 
         const mergeAndNotify = () => {
-             // Merge, Dedupe by ID, Sort
              const allMap = new Map();
              newJobs.forEach(j => allMap.set(j.id, j));
              myJobs.forEach(j => allMap.set(j.id, j));
@@ -863,7 +790,6 @@ const RealApi = {
             mergeAndNotify();
         });
         
-        // 3. Listen for mechanic profile
         const unsubMech = onSnapshot(doc(db, 'mechanics', auth.currentUser.uid), (docSnap) => {
             if (docSnap.exists()) {
                 const data = docSnap.data();
