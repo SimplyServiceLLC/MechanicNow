@@ -2,12 +2,11 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../App';
-import { Wrench, User, Mail, Lock, Phone as PhoneIcon, Upload, CheckCircle, ChevronRight, ArrowLeft, ShieldCheck, MapPin, Briefcase, Award, Loader2, FileText, AlertTriangle } from 'lucide-react';
+import { Wrench, User, Mail, Lock, Phone as PhoneIcon, Upload, CheckCircle, ChevronRight, ArrowLeft, ShieldCheck, MapPin, Briefcase, Award, Loader2, FileText, AlertTriangle, Camera } from 'lucide-react';
 import { api } from '../services/api';
 import { MechanicRegistrationData } from '../types';
 
 // Extended Vehicle Data (Make -> Models) to show capability
-// For brevity, we just use a sample, but ideally shared with Booking
 const VEHICLE_DATA_KEYS = ["Toyota", "Honda", "Ford", "Chevrolet", "Nissan", "BMW", "Mercedes-Benz", "Audi", "Volkswagen"];
 
 export const MechanicRegistration: React.FC = () => {
@@ -35,7 +34,7 @@ export const MechanicRegistration: React.FC = () => {
   const [verificationDocs, setVerificationDocs] = useState({
     license: false,
     insurance: false,
-    ase: false
+    profilePhoto: false
   });
   
   const [uploadingDoc, setUploadingDoc] = useState<string | null>(null);
@@ -64,7 +63,7 @@ export const MechanicRegistration: React.FC = () => {
       }));
   };
 
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>, docType: 'license' | 'insurance' | 'ase') => {
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>, docType: 'license' | 'insurance' | 'profilePhoto') => {
       if (!e.target.files || e.target.files.length === 0) return;
       const file = e.target.files[0];
       
@@ -73,9 +72,9 @@ export const MechanicRegistration: React.FC = () => {
           // Call API (Mock or Real Storage)
           await api.storage.uploadFile(file, `documents/${docType}`);
           setVerificationDocs(prev => ({ ...prev, [docType]: true }));
-          notify("Success", `${docType.toUpperCase()} uploaded.`);
+          notify("Success", `${docType === 'profilePhoto' ? 'Photo' : docType.toUpperCase()} uploaded successfully.`);
       } catch (err) {
-          notify("Error", "Upload failed. Try again.");
+          notify("Error", "Upload failed. Please check your connection and try again.");
       } finally {
           setUploadingDoc(null);
       }
@@ -201,6 +200,27 @@ export const MechanicRegistration: React.FC = () => {
                 <div className="p-8 animate-fade-in">
                     <button onClick={handleBack} className="mb-4 text-slate-400 hover:text-slate-600 flex items-center gap-1 text-sm font-medium"><ArrowLeft size={16}/> Back</button>
                     <h2 className="text-2xl font-bold text-slate-900 mb-6">Profile Details</h2>
+                    
+                    <div className="flex justify-center mb-6">
+                        <div className="relative group">
+                            <div className={`w-24 h-24 rounded-full border-4 flex items-center justify-center overflow-hidden ${verificationDocs.profilePhoto ? 'border-green-400' : 'border-slate-100 bg-slate-50'}`}>
+                                {verificationDocs.profilePhoto ? (
+                                    <img src={`https://ui-avatars.com/api/?name=${encodeURIComponent(formData.name)}&background=0D8ABC&color=fff`} className="w-full h-full object-cover" />
+                                ) : (
+                                    <User size={32} className="text-slate-300" />
+                                )}
+                                <input 
+                                    type="file" 
+                                    accept="image/*"
+                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"
+                                    onChange={(e) => handleUpload(e, 'profilePhoto')}
+                                />
+                            </div>
+                            <div className="absolute bottom-0 right-0 bg-blue-600 p-1.5 rounded-full text-white shadow-sm z-10 pointer-events-none">
+                                {uploadingDoc === 'profilePhoto' ? <Loader2 size={12} className="animate-spin" /> : <Camera size={12} />}
+                            </div>
+                        </div>
+                    </div>
 
                     <div className="space-y-4">
                         <div>
@@ -323,51 +343,57 @@ export const MechanicRegistration: React.FC = () => {
                 <div className="p-8 animate-fade-in">
                     <button onClick={handleBack} className="mb-4 text-slate-400 hover:text-slate-600 flex items-center gap-1 text-sm font-medium"><ArrowLeft size={16}/> Back</button>
                     <h2 className="text-2xl font-bold text-slate-900 mb-2">Trust & Safety</h2>
-                    <p className="text-slate-500 mb-6 text-sm">We need to verify your identity and insurance.</p>
+                    <p className="text-slate-500 mb-6 text-sm">We need to verify your identity and insurance. Allowed formats: JPG, PNG, WEBP, HEIC, PDF.</p>
 
                     <div className="space-y-4 mb-6">
-                        <div className="p-4 border border-dashed border-slate-300 rounded-xl bg-slate-50 relative">
+                        {/* Driver's License Upload */}
+                        <div className={`p-4 border border-dashed rounded-xl relative transition-colors ${verificationDocs.license ? 'bg-green-50 border-green-300' : 'bg-slate-50 border-slate-300'}`}>
                             <input 
                                 type="file" 
-                                accept="image/*"
+                                accept="image/png, image/jpeg, image/jpg, image/webp, image/heic, image/heif, application/pdf"
                                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
                                 onChange={(e) => handleUpload(e, 'license')}
                                 disabled={!!verificationDocs.license}
                             />
                             <div className="flex justify-between items-center mb-2 pointer-events-none">
                                 <div className="flex items-center gap-3">
-                                    <div className="p-2 bg-white rounded-lg shadow-sm text-slate-500"><ShieldCheck size={20} /></div>
+                                    <div className={`p-2 rounded-lg shadow-sm ${verificationDocs.license ? 'bg-green-100 text-green-600' : 'bg-white text-slate-500'}`}>
+                                        <ShieldCheck size={20} />
+                                    </div>
                                     <span className="font-bold text-slate-700 text-sm">Driver's License</span>
                                 </div>
-                                {verificationDocs.license ? <span className="text-green-600 text-xs font-bold bg-green-100 px-2 py-1 rounded">Uploaded</span> : <span className="text-amber-600 text-xs font-bold bg-amber-100 px-2 py-1 rounded">Required</span>}
+                                {verificationDocs.license ? <span className="text-green-600 text-xs font-bold bg-green-100 px-2 py-1 rounded flex items-center gap-1"><CheckCircle size={10} /> Uploaded</span> : <span className="text-amber-600 text-xs font-bold bg-amber-100 px-2 py-1 rounded">Required</span>}
                             </div>
                             <button 
                                 className="w-full py-2 bg-white border border-slate-200 text-slate-600 text-sm font-medium rounded-lg pointer-events-none flex justify-center items-center gap-2"
                             >
-                                {uploadingDoc === 'license' ? <Loader2 className="animate-spin" size={16}/> : verificationDocs.license ? <CheckCircle size={16} /> : <Upload size={16} />} 
-                                {uploadingDoc === 'license' ? "Uploading..." : verificationDocs.license ? "File Received" : "Tap to Upload Photo"}
+                                {uploadingDoc === 'license' ? <Loader2 className="animate-spin" size={16}/> : verificationDocs.license ? <CheckCircle size={16} className="text-green-500"/> : <Upload size={16} />} 
+                                {uploadingDoc === 'license' ? "Uploading..." : verificationDocs.license ? "File Received" : "Tap to Upload Photo/PDF"}
                             </button>
                         </div>
 
-                         <div className="p-4 border border-dashed border-slate-300 rounded-xl bg-slate-50 relative">
+                        {/* Insurance Upload */}
+                        <div className={`p-4 border border-dashed rounded-xl relative transition-colors ${verificationDocs.insurance ? 'bg-green-50 border-green-300' : 'bg-slate-50 border-slate-300'}`}>
                             <input 
                                 type="file" 
-                                accept="image/*,.pdf"
+                                accept="image/png, image/jpeg, image/jpg, image/webp, image/heic, image/heif, application/pdf"
                                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
                                 onChange={(e) => handleUpload(e, 'insurance')}
                                 disabled={!!verificationDocs.insurance}
                             />
                             <div className="flex justify-between items-center mb-2 pointer-events-none">
                                 <div className="flex items-center gap-3">
-                                    <div className="p-2 bg-white rounded-lg shadow-sm text-slate-500"><FileText size={20} /></div>
+                                    <div className={`p-2 rounded-lg shadow-sm ${verificationDocs.insurance ? 'bg-green-100 text-green-600' : 'bg-white text-slate-500'}`}>
+                                        <FileText size={20} />
+                                    </div>
                                     <span className="font-bold text-slate-700 text-sm">Liability Insurance</span>
                                 </div>
-                                {verificationDocs.insurance ? <span className="text-green-600 text-xs font-bold bg-green-100 px-2 py-1 rounded">Uploaded</span> : <span className="text-amber-600 text-xs font-bold bg-amber-100 px-2 py-1 rounded">Required</span>}
+                                {verificationDocs.insurance ? <span className="text-green-600 text-xs font-bold bg-green-100 px-2 py-1 rounded flex items-center gap-1"><CheckCircle size={10} /> Uploaded</span> : <span className="text-amber-600 text-xs font-bold bg-amber-100 px-2 py-1 rounded">Required</span>}
                             </div>
                             <button 
                                 className="w-full py-2 bg-white border border-slate-200 text-slate-600 text-sm font-medium rounded-lg pointer-events-none flex justify-center items-center gap-2"
                             >
-                                {uploadingDoc === 'insurance' ? <Loader2 className="animate-spin" size={16}/> : verificationDocs.insurance ? <CheckCircle size={16} /> : <Upload size={16} />} 
+                                {uploadingDoc === 'insurance' ? <Loader2 className="animate-spin" size={16}/> : verificationDocs.insurance ? <CheckCircle size={16} className="text-green-500"/> : <Upload size={16} />} 
                                 {uploadingDoc === 'insurance' ? "Uploading..." : verificationDocs.insurance ? "File Received" : "Tap to Upload Policy PDF"}
                             </button>
                         </div>

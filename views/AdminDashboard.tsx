@@ -1,7 +1,8 @@
+
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../App';
 import { useNavigate, Navigate } from 'react-router-dom';
-import { LayoutDashboard, Users, Wrench, FileText, CheckCircle, XCircle, TrendingUp, DollarSign, Activity, Calendar } from 'lucide-react';
+import { LayoutDashboard, Users, Wrench, FileText, CheckCircle, XCircle, TrendingUp, DollarSign, Activity, Calendar, ExternalLink, ShieldCheck, Eye, X } from 'lucide-react';
 import { api } from '../services/api';
 import { Mechanic, JobRequest } from '../types';
 
@@ -13,6 +14,9 @@ export const AdminDashboard: React.FC = () => {
   const [mechanics, setMechanics] = useState<Mechanic[]>([]);
   const [jobs, setJobs] = useState<JobRequest[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  
+  // Review Modal State
+  const [reviewingMechanic, setReviewingMechanic] = useState<Mechanic | null>(null);
 
   useEffect(() => {
     if (user?.isAdmin) {
@@ -42,6 +46,7 @@ export const AdminDashboard: React.FC = () => {
       try {
           await api.admin.approveMechanic(id);
           notify("Success", "Mechanic Approved.");
+          setReviewingMechanic(null);
           fetchData(); // Refresh list
       } catch(e) {
           notify("Error", "Failed to approve mechanic.");
@@ -87,7 +92,7 @@ export const AdminDashboard: React.FC = () => {
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-8">
+        <div className="flex-1 overflow-y-auto p-8 relative">
             
             {activeTab === 'overview' && (
                 <div className="max-w-6xl mx-auto animate-fade-in">
@@ -130,7 +135,7 @@ export const AdminDashboard: React.FC = () => {
                             <h3 className="font-bold text-slate-900 mb-4">Recent Mechanics</h3>
                             <div className="space-y-4">
                                 {mechanics.slice(0, 5).map(m => (
-                                    <div key={m.id} className="flex items-center justify-between p-3 hover:bg-slate-50 rounded-lg transition-colors">
+                                    <div key={m.id} className="flex items-center justify-between p-3 hover:bg-slate-50 rounded-lg transition-colors cursor-pointer" onClick={() => setReviewingMechanic(m)}>
                                         <div className="flex items-center gap-3">
                                             <div className="w-10 h-10 bg-slate-200 rounded-full flex items-center justify-center font-bold text-slate-600">
                                                 {m.name.charAt(0)}
@@ -217,10 +222,10 @@ export const AdminDashboard: React.FC = () => {
                                         <td className="p-4 text-right">
                                             {!m.verified && (
                                                 <button 
-                                                    onClick={() => handleApproveMechanic(m.id)}
-                                                    className="px-3 py-1.5 bg-green-600 text-white text-xs font-bold rounded-lg hover:bg-green-500 transition-colors shadow-sm"
+                                                    onClick={() => setReviewingMechanic(m)}
+                                                    className="px-3 py-1.5 bg-slate-800 text-white text-xs font-bold rounded-lg hover:bg-slate-700 transition-colors shadow-sm flex items-center gap-1 ml-auto"
                                                 >
-                                                    Approve
+                                                    <Eye size={12}/> Review
                                                 </button>
                                             )}
                                         </td>
@@ -283,6 +288,79 @@ export const AdminDashboard: React.FC = () => {
                 </div>
             )}
         </div>
+
+        {/* Review Modal */}
+        {reviewingMechanic && (
+             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fade-in">
+                 <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl p-8 animate-scale-up max-h-[90vh] overflow-y-auto">
+                     <div className="flex justify-between items-start mb-6">
+                         <div className="flex items-center gap-4">
+                             <div className="w-16 h-16 bg-slate-200 rounded-full flex items-center justify-center font-bold text-2xl text-slate-600">
+                                 {reviewingMechanic.name.charAt(0)}
+                             </div>
+                             <div>
+                                 <h2 className="text-2xl font-bold text-slate-900">{reviewingMechanic.name}</h2>
+                                 <p className="text-slate-500">Applicant ID: {reviewingMechanic.id}</p>
+                             </div>
+                         </div>
+                         <button onClick={() => setReviewingMechanic(null)} className="p-2 hover:bg-slate-100 rounded-full"><X size={24}/></button>
+                     </div>
+
+                     <div className="grid grid-cols-2 gap-8 mb-8">
+                         <div>
+                             <h3 className="font-bold text-slate-900 mb-2 border-b pb-2">Profile Details</h3>
+                             <div className="space-y-2 text-sm">
+                                 <p><span className="text-slate-500">Experience:</span> {reviewingMechanic.yearsExperience} Years</p>
+                                 <p><span className="text-slate-500">Specialties:</span> {reviewingMechanic.specialties?.join(', ')}</p>
+                                 <p><span className="text-slate-500">Certifications:</span> {reviewingMechanic.certifications?.join(', ')}</p>
+                                 <p className="mt-2 text-slate-600 italic">"{reviewingMechanic.bio}"</p>
+                             </div>
+                         </div>
+                         <div>
+                             <h3 className="font-bold text-slate-900 mb-2 border-b pb-2">Documents</h3>
+                             <div className="space-y-3">
+                                 <div className="flex justify-between items-center p-3 bg-slate-50 rounded-lg border border-slate-200">
+                                     <div className="flex items-center gap-2">
+                                         <ShieldCheck size={18} className="text-blue-600"/>
+                                         <span className="text-sm font-medium">Driver's License</span>
+                                     </div>
+                                     <button className="text-xs font-bold text-blue-600 hover:underline flex items-center gap-1"><ExternalLink size={12}/> View</button>
+                                 </div>
+                                 <div className="flex justify-between items-center p-3 bg-slate-50 rounded-lg border border-slate-200">
+                                     <div className="flex items-center gap-2">
+                                         <FileText size={18} className="text-blue-600"/>
+                                         <span className="text-sm font-medium">Insurance Policy</span>
+                                     </div>
+                                     <button className="text-xs font-bold text-blue-600 hover:underline flex items-center gap-1"><ExternalLink size={12}/> View</button>
+                                 </div>
+                                  <div className="flex justify-between items-center p-3 bg-slate-50 rounded-lg border border-slate-200">
+                                     <div className="flex items-center gap-2">
+                                         <CheckCircle size={18} className="text-green-600"/>
+                                         <span className="text-sm font-medium">Background Check</span>
+                                     </div>
+                                     <span className="text-xs font-bold text-green-600 bg-green-100 px-2 py-0.5 rounded">PASSED</span>
+                                 </div>
+                             </div>
+                         </div>
+                     </div>
+
+                     <div className="flex gap-4">
+                         <button 
+                             onClick={() => setReviewingMechanic(null)} 
+                             className="flex-1 py-4 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200 transition-colors"
+                         >
+                             Cancel
+                         </button>
+                         <button 
+                             onClick={() => handleApproveMechanic(reviewingMechanic.id)} 
+                             className="flex-[2] py-4 bg-green-600 text-white font-bold rounded-xl hover:bg-green-500 transition-colors flex items-center justify-center gap-2"
+                         >
+                             <CheckCircle size={20} /> Approve Mechanic
+                         </button>
+                     </div>
+                 </div>
+             </div>
+        )}
     </div>
   );
 };

@@ -1,12 +1,13 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CheckCircle, Star, MapPin, ArrowRight, Shield, Zap, Clock, Mic, Wrench } from 'lucide-react';
+import { CheckCircle, MapPin, ArrowRight, Shield, Zap, Clock, Wrench, Crosshair, Loader2 } from 'lucide-react';
 
 const AddressAutocomplete = ({ value, onChange, onSelect }: { value: string, onChange: (val: string) => void, onSelect?: (address: string) => void }) => {
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const [isLocating, setIsLocating] = useState(false);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -36,17 +37,56 @@ const AddressAutocomplete = ({ value, onChange, onSelect }: { value: string, onC
     }
   };
 
+  const handleUseCurrentLocation = () => {
+    if (!navigator.geolocation) return;
+    setIsLocating(true);
+    
+    navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+            try {
+                const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${pos.coords.latitude}&lon=${pos.coords.longitude}`);
+                const data = await res.json();
+                if (data && data.address) {
+                    const addr = data.address;
+                    // Format: House Number Street, City, State
+                    const formatted = `${addr.house_number || ''} ${addr.road || ''}, ${addr.city || addr.town || ''}, ${addr.state || ''}`.trim().replace(/^,/, '');
+                    onChange(formatted);
+                    if(onSelect) onSelect(formatted);
+                }
+            } catch (e) {
+                console.error(e);
+            } finally {
+                setIsLocating(false);
+            }
+        },
+        (err) => {
+            console.error(err);
+            setIsLocating(false);
+            alert("Could not retrieve location. Please enter address manually.");
+        },
+        { enableHighAccuracy: true }
+    );
+  };
+
   return (
     <div className="relative flex-1" ref={wrapperRef}>
          <div className="flex items-center bg-gray-50 rounded-xl px-4 py-3 border border-slate-200 focus-within:ring-2 focus-within:ring-black focus-within:border-transparent transition-all">
             <MapPin className="text-slate-400 mr-3 flex-shrink-0" size={20} />
             <input 
               type="text" 
-              placeholder="Enter zip code or address" 
+              placeholder="Enter address or zip code" 
               className="bg-transparent flex-1 outline-none text-slate-900 font-medium placeholder:text-slate-400 placeholder:font-normal min-w-0"
               value={value}
               onChange={handleInput}
             />
+            <button 
+                onClick={handleUseCurrentLocation}
+                disabled={isLocating}
+                className="ml-2 p-1.5 hover:bg-white rounded-lg text-blue-600 transition-colors"
+                title="Use Current Location"
+            >
+                {isLocating ? <Loader2 className="animate-spin" size={20} /> : <Crosshair size={20} />}
+            </button>
          </div>
       
       {showSuggestions && suggestions.length > 0 && (
