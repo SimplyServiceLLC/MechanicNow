@@ -144,7 +144,12 @@ const MockApi = {
     },
     capture: async (jobId: string, amount: number) => {
         await delay(1000);
-        console.log(`[Stripe Connect] Payment captured. $${amount} split between platform and connected account.`);
+        // Simulate fee deduction and transfer
+        const platformFee = amount * 0.2;
+        const netToMechanic = amount - platformFee;
+        console.log(`[Stripe Mock] Captured Payment of $${amount}.`);
+        console.log(`[Stripe Mock] Platform Fee (20%): -$${platformFee.toFixed(2)}`);
+        console.log(`[Stripe Mock] Transferred to Connected Account: $${netToMechanic.toFixed(2)}`);
         return { success: true };
     }
   },
@@ -276,6 +281,7 @@ const MockApi = {
         const current = getDbItem('mn_earnings_stats', DEFAULT_EARNINGS);
         const updated = { ...current, week: 0 };
         setDbItem('mn_earnings_stats', updated);
+        console.log(`[Mock Payout] Initiated transfer of $${amount} to external bank account.`);
         return { success: true, payoutId: `po_${Date.now()}` };
     },
     createJobRequest: async (job: JobRequest) => {

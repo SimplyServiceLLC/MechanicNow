@@ -292,8 +292,8 @@ const BookingConfirmationView = ({ mechanic, vehicle, services, date, time, loca
                     return;
                 }
 
-                if (result.paymentIntent?.status === 'succeeded') {
-                    // 3. Complete Booking
+                if (result.paymentIntent?.status === 'succeeded' || result.paymentIntent?.status === 'requires_capture') {
+                    // 3. Complete Booking (pass the Intent ID so we can capture it later)
                     onConfirm({ id: 'pm_stripe', type: 'CARD', last4: '4242', brand: 'Visa' }, breakdown, id);
                 }
 
@@ -637,7 +637,8 @@ export const MechanicList: React.FC = () => {
             mechanicId: selectedMechanic.id,
             paymentMethod: paymentMethod, 
             priceBreakdown: breakdown,
-            paymentStatus: paymentMethod?.type === 'CARD' ? 'AUTHORIZED' : 'PENDING'
+            paymentStatus: paymentMethod?.type === 'CARD' ? 'AUTHORIZED' : 'PENDING',
+            paymentIntentId: paymentIntentId // Save the Payment Intent ID
         };
 
         await api.mechanic.createJobRequest(newJob);

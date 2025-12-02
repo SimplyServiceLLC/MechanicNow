@@ -1,4 +1,5 @@
 
+
 # Stripe Connect Integration Guide for MechanicNow
 
 ## 1. Create a Stripe Connect Platform Account
@@ -47,6 +48,7 @@ exports.createPaymentIntent = functions.https.onCall(async (data, context) => {
   const paymentIntent = await stripe.paymentIntents.create({
     amount: data.amount, // e.g. 10000 (100.00)
     currency: 'usd',
+    capture_method: 'manual', // Important: Hold funds until job completion
     application_fee_amount: data.amount * 0.20, // 20% platform fee
     transfer_data: {
       destination: data.mechanicStripeId, // The mechanic's connect account ID
@@ -56,7 +58,50 @@ exports.createPaymentIntent = functions.https.onCall(async (data, context) => {
 });
 ```
 
-## 4. Frontend Integration
+## 4. Capturing Payments & Payouts
+When the mechanic completes the job, capture the funds. This automatically triggers the transfer to the mechanic's Stripe balance.
+
+```javascript
+const admin = require('firebase-admin');
+
+exports.capturePayment = functions.https.onCall(async (data, context) => {
+    // data.jobId is passed from frontend
+    // Retrieve the paymentIntentId from the Job document in Firestore
+    const jobDoc = await admin.firestore().collection('job_requests').doc(data.jobId).get();
+    const paymentIntentId = jobDoc.data().paymentIntentId;
+
+    if (!paymentIntentId) throw new Error("No payment method on file.");
+
+    // Capture the funds (finalizes the charge)
+    const intent = await stripe.paymentIntents.capture(paymentIntentId, {
+        amount_to_capture: Math.round(data.amount * 100) // Support partial capture if total changed
+    });
+    
+    return { success: true };
+});
+
+exports.payoutToBank = functions.https.onCall(async (data, context) => {
+    // Triggered when mechanic clicks "Cash Out"
+    // Requires the mechanic's Stripe Account ID stored in their profile
+    const mechanicId = context.auth.uid;
+    const mechDoc = await admin.firestore().collection('mechanics').doc(mechanicId).get();
+    const stripeAccountId = mechDoc.data().stripeAccountId;
+
+    if (!stripeAccountId) throw new Error("Stripe account not connected");
+
+    // Create a payout to their external bank account
+    const payout = await stripe.payouts.create({
+        amount: Math.round(data.amount * 100),
+        currency: 'usd',
+    }, {
+        stripeAccount: stripeAccountId,
+    });
+
+    return { success: true, payoutId: payout.id };
+});
+```
+
+## 5. Frontend Integration
 1. Install `@stripe/react-stripe-js` and `@stripe/stripe-js`.
 2. Wrap your `BookingConfirmation` component in `<Elements>`.
 3. Use `useStripe()` and `useElements()` to handle the card submission using the `clientSecret` returned from your backend.

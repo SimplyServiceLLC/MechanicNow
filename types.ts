@@ -170,4 +170,5 @@ export interface JobRequest {
   paymentMethod?: PaymentMethod;
   priceBreakdown?: PriceBreakdown;
   paymentStatus?: 'PENDING' | 'AUTHORIZED' | 'CAPTURED' | 'FAILED';
+  paymentIntentId?: string; // Stripe Payment Intent ID for capturing later
 }
