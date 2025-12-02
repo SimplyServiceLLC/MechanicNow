@@ -1,9 +1,8 @@
 
-
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../App';
-import { Wrench, Mic, Lock, Mail, ArrowLeft, CheckCircle } from 'lucide-react';
+import { Wrench, Mic, Lock, Mail, ArrowLeft, CheckCircle, ShieldCheck, User, Briefcase } from 'lucide-react';
 import { api } from '../services/api';
 
 export const Login: React.FC = () => {
@@ -18,16 +17,27 @@ export const Login: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (email && password) {
-      // Name is optional for login, but used for registration fallback
-      await login(name || email.split('@')[0], email, password);
-      
-      // Navigate based on role
-      // Note: We need to check the user object in context, but since login is async and updates state,
-      // it's safer to rely on the fact that if it threw error we wouldn't be here.
-      // However, to know WHERE to go, we might need to check the API response or wait for context.
-      // For simplicity in this structure, we default to profile, but the App header will show Admin button.
-      navigate('/profile');
+      await performLogin(name || email.split('@')[0], email, password);
     }
+  };
+
+  const performLogin = async (uName: string, uEmail: string, uPass: string) => {
+      try {
+        await login(uName, uEmail, uPass);
+        
+        // Router logic handled in App or simple redirect here
+        // We need to wait a tick for context to update, but usually the UI reacts.
+        // For admin specifically:
+        if (uEmail.includes('admin')) {
+            navigate('/admin');
+        } else if (uEmail.includes('mechanic')) {
+            navigate('/mechanic-dashboard');
+        } else {
+            navigate('/profile');
+        }
+      } catch (error) {
+          // Handled by context usually, but good to have safety
+      }
   };
 
   const handleResetPassword = async (e: React.FormEvent) => {
@@ -38,3 +48,164 @@ export const Login: React.FC = () => {
       }
       try {
           await api.auth.resetPassword(email);
+          setResetSent(true);
+      } catch (e: any) {
+          notify('Error', e.message || 'Failed to send reset email');
+      }
+  };
+
+  const handleQuickLogin = (type: 'admin' | 'mechanic' | 'customer') => {
+      if (type === 'admin') {
+          performLogin('Admin User', 'admin@mechanicnow.com', 'admin123');
+      } else if (type === 'mechanic') {
+          performLogin('Mike Mechanic', 'mike@mechanic.com', 'mech123');
+      } else {
+          performLogin('John Doe', 'john@example.com', 'user123');
+      }
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4 relative overflow-hidden">
+      {/* Background Decor */}
+      <div className="absolute top-0 left-0 w-full h-full overflow-hidden z-0">
+          <div className="absolute top-[-10%] right-[-10%] w-96 h-96 bg-blue-600/20 rounded-full blur-3xl"></div>
+          <div className="absolute bottom-[-10%] left-[-10%] w-96 h-96 bg-purple-600/20 rounded-full blur-3xl"></div>
+      </div>
+
+      <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden z-10 animate-fade-in">
+        <div className="p-8">
+            <button onClick={() => navigate('/')} className="mb-6 text-slate-400 hover:text-slate-600 flex items-center gap-2 text-sm font-bold transition-colors">
+                <ArrowLeft size={16} /> Back to Home
+            </button>
+
+            <div className="text-center mb-8">
+                <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-blue-200">
+                    <Wrench className="text-white" size={32} />
+                </div>
+                <h1 className="text-2xl font-bold text-slate-900">Welcome Back</h1>
+                <p className="text-slate-500">Sign in to manage your repairs or jobs.</p>
+            </div>
+
+            {!isResetting ? (
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1 ml-1">Email Address</label>
+                        <div className="relative">
+                            <Mail className="absolute left-3 top-3.5 text-slate-400" size={18} />
+                            <input 
+                                type="email" 
+                                className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all font-medium text-slate-900"
+                                placeholder="name@example.com"
+                                value={email}
+                                onChange={(e) => setEmail(e.target.value)}
+                                required
+                            />
+                        </div>
+                    </div>
+                    
+                    <div>
+                         <div className="flex justify-between items-center mb-1 ml-1">
+                            <label className="block text-xs font-bold text-slate-500 uppercase">Password</label>
+                            <button type="button" onClick={() => setIsResetting(true)} className="text-xs font-bold text-blue-600 hover:underline">Forgot?</button>
+                         </div>
+                        <div className="relative">
+                            <Lock className="absolute left-3 top-3.5 text-slate-400" size={18} />
+                            <input 
+                                type="password" 
+                                className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all font-medium text-slate-900"
+                                placeholder="••••••••"
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                required
+                            />
+                        </div>
+                    </div>
+
+                    <button 
+                        type="submit" 
+                        className="w-full bg-slate-900 text-white font-bold py-4 rounded-xl hover:bg-slate-800 transition-all shadow-xl active:scale-95"
+                    >
+                        Sign In
+                    </button>
+                </form>
+            ) : (
+                <form onSubmit={handleResetPassword} className="space-y-4 animate-fade-in">
+                    <div className="bg-blue-50 p-4 rounded-xl text-sm text-blue-800 border border-blue-100 mb-4">
+                        Enter your email address and we'll send you a link to reset your password.
+                    </div>
+                    <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1 ml-1">Email Address</label>
+                        <div className="relative">
+                            <Mail className="absolute left-3 top-3.5 text-slate-400" size={18} />
+                            <input 
+                                type="email" 
+                                className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all font-medium text-slate-900"
+                                placeholder="name@example.com"
+                                value={email}
+                                onChange={(e) => setEmail(e.target.value)}
+                                required
+                            />
+                        </div>
+                    </div>
+                    {resetSent ? (
+                        <div className="p-4 bg-green-50 text-green-700 rounded-xl flex items-center gap-2 font-bold justify-center">
+                            <CheckCircle size={20} /> Email Sent!
+                        </div>
+                    ) : (
+                        <button 
+                            type="submit" 
+                            className="w-full bg-blue-600 text-white font-bold py-4 rounded-xl hover:bg-blue-500 transition-all shadow-xl active:scale-95"
+                        >
+                            Send Reset Link
+                        </button>
+                    )}
+                    <button type="button" onClick={() => setIsResetting(false)} className="w-full text-slate-500 font-bold py-2 hover:text-slate-800">
+                        Cancel
+                    </button>
+                </form>
+            )}
+
+            <div className="mt-8 text-center">
+                <p className="text-slate-500 text-sm">
+                    Don't have an account? <span onClick={() => navigate('/')} className="text-blue-600 font-bold cursor-pointer hover:underline">Sign up</span>
+                </p>
+                <div className="mt-2">
+                    <span onClick={() => navigate('/register-mechanic')} className="text-xs font-bold text-slate-400 uppercase tracking-wide cursor-pointer hover:text-slate-600">
+                        Apply as a Mechanic
+                    </span>
+                </div>
+            </div>
+
+            {/* DEMO QUICK LOGIN SECTION */}
+            <div className="mt-8 pt-6 border-t border-slate-100">
+                <p className="text-[10px] font-bold text-slate-400 text-center uppercase tracking-widest mb-4">Demo Quick Access</p>
+                <div className="grid grid-cols-3 gap-3">
+                    <button 
+                        onClick={() => handleQuickLogin('customer')}
+                        className="flex flex-col items-center justify-center p-3 rounded-xl bg-slate-50 hover:bg-slate-100 transition-colors border border-slate-100"
+                    >
+                        <User size={20} className="text-slate-400 mb-1"/>
+                        <span className="text-xs font-bold text-slate-600">Customer</span>
+                    </button>
+                    <button 
+                        onClick={() => handleQuickLogin('mechanic')}
+                        className="flex flex-col items-center justify-center p-3 rounded-xl bg-slate-50 hover:bg-blue-50 transition-colors border border-slate-100 group"
+                    >
+                        <Briefcase size={20} className="text-slate-400 group-hover:text-blue-500 mb-1"/>
+                        <span className="text-xs font-bold text-slate-600 group-hover:text-blue-600">Mechanic</span>
+                    </button>
+                    <button 
+                        onClick={() => handleQuickLogin('admin')}
+                        className="flex flex-col items-center justify-center p-3 rounded-xl bg-slate-50 hover:bg-slate-900 transition-colors border border-slate-100 group"
+                    >
+                        <ShieldCheck size={20} className="text-slate-400 group-hover:text-white mb-1"/>
+                        <span className="text-xs font-bold text-slate-600 group-hover:text-white">Owner</span>
+                    </button>
+                </div>
+            </div>
+
+        </div>
+      </div>
+    </div>
+  );
+};
