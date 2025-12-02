@@ -72,6 +72,7 @@ export interface Mechanic {
   reviews?: Review[];
   certifications?: string[];
   schedule?: MechanicSchedule;
+  verified?: boolean;
 }
 
 export interface MechanicRegistrationData {
@@ -114,6 +115,7 @@ export interface UserProfile {
   vehicles: Vehicle[];
   history: ServiceRecord[];
   isMechanic?: boolean;
+  isAdmin?: boolean;
 }
 
 export interface JobCompletionDetails {
@@ -171,4 +173,5 @@ export interface JobRequest {
   priceBreakdown?: PriceBreakdown;
   paymentStatus?: 'PENDING' | 'AUTHORIZED' | 'CAPTURED' | 'FAILED';
   paymentIntentId?: string; // Stripe Payment Intent ID for capturing later
+  createdAt?: string;
 }

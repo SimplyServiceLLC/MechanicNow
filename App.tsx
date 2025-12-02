@@ -1,7 +1,9 @@
 
+
+
 import React, { useState, createContext, useContext, useEffect } from 'react';
 import { HashRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { Wrench, Menu, X, Bell, Mic, Loader2, AlertTriangle } from 'lucide-react';
+import { Wrench, Menu, X, Bell, Mic, Loader2, AlertTriangle, ShieldCheck } from 'lucide-react';
 import { Home } from './views/Home';
 import { Booking } from './views/Booking';
 import { MechanicList } from './views/MechanicList';
@@ -10,6 +12,7 @@ import { Profile } from './views/Profile';
 import { Tracking } from './views/Tracking';
 import { MechanicDashboard } from './views/MechanicDashboard';
 import { MechanicRegistration } from './views/MechanicRegistration';
+import { AdminDashboard } from './views/AdminDashboard';
 import { Terms } from './views/Terms';
 import { UserProfile, Vehicle, ServiceRecord } from './types';
 import { api } from './services/api';
@@ -190,6 +193,14 @@ const Layout = ({ children }: { children?: React.ReactNode }) => {
               
               {user ? (
                 <div className="flex items-center gap-4">
+                   {user.isAdmin && (
+                        <button 
+                            onClick={() => navigate('/admin')}
+                            className={`flex items-center gap-2 text-sm font-bold px-3 py-2 rounded-full transition-colors ${isAppView ? 'bg-slate-900 text-white hover:bg-slate-800' : 'bg-white/10 text-white hover:bg-white/20'}`}
+                        >
+                            <ShieldCheck size={16} /> Admin
+                        </button>
+                   )}
                    <button 
                     onClick={() => navigate('/profile')}
                     className={`flex items-center gap-2 text-sm font-medium px-3 py-2 rounded-full transition-colors ${isAppView ? 'hover:bg-slate-100 text-slate-700' : 'bg-white/10 text-white hover:bg-white/20'}`}
@@ -239,6 +250,7 @@ const Layout = ({ children }: { children?: React.ReactNode }) => {
                     <p className="text-xs text-slate-500">{user.email}</p>
                   </div>
                 </div>
+                {user.isAdmin && <button onClick={() => { navigate('/admin'); setIsMenuOpen(false); }} className="p-2 text-left hover:bg-gray-50 rounded font-bold text-slate-900">Admin Panel</button>}
                 <button onClick={() => { navigate('/profile'); setIsMenuOpen(false); }} className="p-2 text-left hover:bg-gray-50 rounded">My Profile</button>
                 <button onClick={() => { navigate('/book'); setIsMenuOpen(false); }} className="p-2 text-left hover:bg-gray-50 rounded">Book Service</button>
                 <button onClick={() => { navigate('/mechanic-dashboard'); setIsMenuOpen(false); }} className="p-2 text-left hover:bg-gray-50 rounded text-blue-600">Mechanic Dashboard</button>
@@ -310,7 +322,7 @@ const App: React.FC = () => {
     try {
       const newUser = await api.auth.login(name, email, password);
       setUser(newUser);
-      notify('Welcome Back!', `Signed in as ${name}`);
+      notify('Welcome Back!', `Signed in as ${newUser.name}`);
     } catch (e: any) {
       console.error(e);
       notify('Error', e.message || 'Login failed');
@@ -398,6 +410,7 @@ const App: React.FC = () => {
               <Route path="/mechanics" element={<MechanicList />} />
               <Route path="/tracking" element={<Tracking />} />
               <Route path="/mechanic-dashboard" element={<MechanicDashboard />} />
+              <Route path="/admin" element={<AdminDashboard />} />
               <Route path="/terms" element={<Terms />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

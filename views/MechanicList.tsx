@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Star, Clock, Award, ShieldCheck, ArrowLeft, MapPin as MapPinIcon, ChevronRight, CheckCircle, Zap, Calendar, Loader2, CreditCard, Banknote, X, Wrench, Wallet, Lock, FileText } from 'lucide-react';
+import { Star, Clock, Award, ShieldCheck, ArrowLeft, MapPin as MapPinIcon, ChevronRight, CheckCircle, Zap, Calendar, Loader2, CreditCard, Banknote, X, Wrench, Wallet, Lock, FileText, Filter } from 'lucide-react';
 import { Vehicle, ServiceItem, Mechanic, JobRequest, PriceBreakdown, PaymentMethod, GeoLocation, ServiceType } from '../types';
 import { useApp } from '../App';
 import { api } from '../services/api';
@@ -505,6 +505,7 @@ export const MechanicList: React.FC = () => {
 
   // Editable services state
   const [currentServices, setCurrentServices] = useState<ServiceItem[]>(state?.services || []);
+  const [activeFilter, setActiveFilter] = useState('All');
 
   if (!state) {
     return <div className="pt-24 text-center"><p>No booking details found.</p><button onClick={() => navigate('/book')} className="text-blue-600 mt-4">Start Booking</button></div>;
@@ -607,8 +608,16 @@ export const MechanicList: React.FC = () => {
         return { ...mechanic, score, matchReason, availability: effectiveAvailability };
     });
 
-    return scored.sort((a, b) => b.score - a.score);
-  }, [mechanics, currentServices, date, time]);
+    let result = scored.sort((a, b) => b.score - a.score);
+
+    if (activeFilter !== 'All') {
+        result = result.filter(m => 
+            m.specialties?.some(s => s.toLowerCase().includes(activeFilter.toLowerCase()))
+        );
+    }
+
+    return result;
+  }, [mechanics, currentServices, date, time, activeFilter]);
 
 
   const handleBookClick = (mechanic: Mechanic) => {
@@ -694,7 +703,7 @@ export const MechanicList: React.FC = () => {
     <div className="min-h-screen bg-gray-100 pt-20 pb-10">
       <div className="max-w-5xl mx-auto px-4">
         
-        <div className="flex items-center gap-4 mb-8">
+        <div className="flex items-center gap-4 mb-6">
             <button onClick={() => navigate('/book')} className="p-2 bg-white rounded-full shadow-sm hover:bg-gray-50 transition-colors">
                 <ArrowLeft size={20} className="text-slate-700" />
             </button>
@@ -702,6 +711,23 @@ export const MechanicList: React.FC = () => {
                 <h1 className="text-2xl font-bold text-slate-900">Select a Mechanic</h1>
                 <p className="text-slate-500 text-sm">{vehicle.year} {vehicle.make} {vehicle.model} • {new Date(date).toLocaleDateString()} at {time}</p>
             </div>
+        </div>
+
+        {/* Filter Bar */}
+        <div className="flex gap-2 overflow-x-auto pb-2 mb-6 no-scrollbar">
+            {['All', 'Brakes', 'Engine', 'Electrical', 'Diagnostics', 'Suspension', 'Oil & Fluids', 'HVAC'].map(filter => (
+                <button
+                    key={filter}
+                    onClick={() => setActiveFilter(filter)}
+                    className={`px-4 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all border ${
+                        activeFilter === filter 
+                        ? 'bg-slate-900 text-white border-slate-900 shadow-md transform scale-105' 
+                        : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                    }`}
+                >
+                    {filter === 'Oil & Fluids' ? 'Oil / Fluids' : filter}
+                </button>
+            ))}
         </div>
 
         {isLoadingMechanics ? (
@@ -714,7 +740,9 @@ export const MechanicList: React.FC = () => {
                 <Wrench size={48} className="text-slate-300 mb-4" />
                 <h3 className="text-xl font-bold text-slate-900 mb-2">No Mechanics Found</h3>
                 <p className="text-slate-500 text-center max-w-md">
-                    It looks like no mechanics are currently available in your area or registered on the platform yet. 
+                    {activeFilter !== 'All' 
+                        ? `No mechanics available with "${activeFilter}" specialty.` 
+                        : "It looks like no mechanics are currently available in your area or registered on the platform yet."}
                 </p>
                 <button onClick={() => navigate('/mechanic-dashboard')} className="mt-6 text-blue-600 font-bold hover:underline">
                     Are you a mechanic? Sign up here.

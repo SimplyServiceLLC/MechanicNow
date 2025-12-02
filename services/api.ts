@@ -1,5 +1,6 @@
 
 
+
 import { UserProfile, JobRequest, PaymentMethod, Mechanic, MechanicRegistrationData } from '../types';
 import * as firebaseApp from 'firebase/app';
 import * as firebaseAuth from 'firebase/auth';
@@ -110,6 +111,22 @@ const MockApi = {
   auth: {
     login: async (name: string, email: string) => {
       await delay(600); 
+      
+      // Admin Login Check
+      if (email.toLowerCase() === 'admin@mechanicnow.com') {
+          const adminUser: UserProfile = {
+              id: 'admin_001',
+              name: 'Administrator',
+              email: email,
+              avatar: 'https://ui-avatars.com/api/?name=Admin&background=1e293b&color=fff',
+              vehicles: [],
+              history: [],
+              isAdmin: true
+          };
+          setDbItem('mn_user', adminUser);
+          return adminUser;
+      }
+
       // User starts with empty garage in Real Mode.
       // We check if this user exists in LS, if not create new.
       let existing = getDbItem<UserProfile | null>('mn_user', null);
@@ -193,7 +210,8 @@ const MockApi = {
             bio: data.bio,
             specialties: data.specialties,
             certifications: data.certifications,
-            reviews: []
+            reviews: [],
+            verified: false // New mechanics start unverified
         };
         
         const existingMechanics = getDbItem<Mechanic[]>('mn_registered_mechanics', []);
@@ -231,7 +249,8 @@ const MockApi = {
           lat: lat + (Math.random() - 0.5) * 0.03, 
           lng: lng + (Math.random() - 0.5) * 0.03,
           specialties: ['Brakes', 'Oil', 'General'],
-          yearsExperience: 5
+          yearsExperience: 5,
+          verified: true
       }));
       
       const m1Mechanic: Mechanic = {
@@ -248,7 +267,8 @@ const MockApi = {
           specialties: ['Diagnostics', 'Engine', 'Electrical'],
           yearsExperience: 12,
           bio: 'Master Technician with 12 years of experience. Specializing in diagnostics and electrical systems.',
-          certifications: ['ASE Master', 'Hybrid Specialist']
+          certifications: ['ASE Master', 'Hybrid Specialist'],
+          verified: true
       };
       
       const currentUser = getDbItem<UserProfile | null>('mn_user', null);
@@ -286,7 +306,8 @@ const MockApi = {
     },
     createJobRequest: async (job: JobRequest) => {
       const requests = getDbItem<JobRequest[]>('mn_dashboard_requests', MOCK_REQUESTS);
-      setDbItem('mn_dashboard_requests', [job, ...requests]);
+      const newJob = { ...job, createdAt: new Date().toISOString() };
+      setDbItem('mn_dashboard_requests', [newJob, ...requests]);
       if (job.mechanicId) {
           MockApi.notifications.sendSMS("+15550000000", `New Job: ${job.vehicle} - ${job.issue}. Payout: $${job.payout.toFixed(2)}`);
       }
@@ -344,6 +365,44 @@ const MockApi = {
          }, 1000);
          return () => clearInterval(interval);
     }
+  },
+  admin: {
+    getStats: async () => {
+        await delay(500);
+        const jobs = getDbItem<JobRequest[]>('mn_dashboard_requests', MOCK_REQUESTS);
+        const mechanics = getDbItem<Mechanic[]>('mn_registered_mechanics', []);
+        
+        const totalRevenue = jobs.reduce((acc, job) => acc + (job.priceBreakdown?.platformFee || 0), 0);
+        const completedJobs = jobs.filter(j => j.status === 'COMPLETED').length;
+        
+        return {
+            totalUsers: 125, // Mock number
+            totalMechanics: mechanics.length + 5, // Include built-in mocks
+            totalJobs: jobs.length,
+            completedJobs,
+            totalRevenue
+        };
+    },
+    getAllMechanics: async () => {
+        await delay(600);
+        // Combine registered and mock
+        const registered = getDbItem<Mechanic[]>('mn_registered_mechanics', []);
+        const mocks: Mechanic[] = [
+            { id: 'm1', name: 'Top Rated Pro (m1)', email: 'pro@test.com', rating: 5.0, jobsCompleted: 1542, avatar: '', verified: true, availability: 'Available Now' } as any
+        ];
+        return [...registered, ...mocks];
+    },
+    approveMechanic: async (mechanicId: string) => {
+        await delay(500);
+        const mechanics = getDbItem<Mechanic[]>('mn_registered_mechanics', []);
+        const updated = mechanics.map(m => m.id === mechanicId ? { ...m, verified: true } : m);
+        setDbItem('mn_registered_mechanics', updated);
+        return true;
+    },
+    getAllJobs: async () => {
+        await delay(600);
+        return getDbItem<JobRequest[]>('mn_dashboard_requests', MOCK_REQUESTS);
+    }
   }
 };
 
@@ -357,6 +416,7 @@ const mapUser = (user: User, data?: any): UserProfile => ({
   address: data?.address,
   bio: data?.bio,
   isMechanic: data?.isMechanic,
+  isAdmin: data?.isAdmin,
   vehicles: data?.vehicles || [],
   history: convertTimestamps(data?.history || [])
 });
@@ -572,7 +632,8 @@ const RealApi = {
             availability: 'Offline',
             reviews: [],
             lat: 36.8508, 
-            lng: -76.2859
+            lng: -76.2859,
+            verified: false
         };
         await setDoc(doc(db, 'mechanics', user.uid), mechanicData);
         
@@ -593,7 +654,8 @@ const RealApi = {
     },
     getNearbyMechanics: async (lat: number, lng: number): Promise<Mechanic[]> => {
        if (!db) return [];
-       const q = query(collection(db, 'mechanics'), where('availability', '!=', 'Offline'));
+       // Only show active and verified mechanics in production
+       const q = query(collection(db, 'mechanics'), where('availability', '!=', 'Offline'), where('verified', '==', true));
        const snapshot = await getDocs(q);
        
        return snapshot.docs.map(d => {
@@ -615,7 +677,8 @@ const RealApi = {
                certifications: data.certifications || [],
                reviews: data.reviews || [],
                lat: data.lat || lat,
-               lng: data.lng || lng
+               lng: data.lng || lng,
+               verified: !!data.verified
            } as Mechanic;
        });
     },
@@ -812,6 +875,42 @@ const RealApi = {
             unsubMy();
             unsubMech();
         };
+    }
+  },
+  admin: {
+    getStats: async () => {
+        if (!db) return { totalUsers: 0, totalMechanics: 0, totalJobs: 0, completedJobs: 0, totalRevenue: 0 };
+        // Expensive operations in real DB, consider cloud functions aggregation in production
+        const usersSnap = await getDocs(query(collection(db, 'users')));
+        const mechanicsSnap = await getDocs(query(collection(db, 'mechanics')));
+        const jobsSnap = await getDocs(query(collection(db, 'job_requests'), limit(1000)));
+        
+        const jobs = jobsSnap.docs.map(d => d.data());
+        const totalRevenue = jobs.reduce((acc, job) => acc + (job.priceBreakdown?.platformFee || 0), 0);
+        const completedJobs = jobs.filter((j: any) => j.status === 'COMPLETED').length;
+        
+        return {
+            totalUsers: usersSnap.size,
+            totalMechanics: mechanicsSnap.size,
+            totalJobs: jobs.length,
+            completedJobs,
+            totalRevenue
+        };
+    },
+    getAllMechanics: async () => {
+        if (!db) return [];
+        const snap = await getDocs(collection(db, 'mechanics'));
+        return snap.docs.map(d => ({ id: d.id, ...d.data() } as Mechanic));
+    },
+    approveMechanic: async (mechanicId: string) => {
+        if (!db) return false;
+        await updateDoc(doc(db, 'mechanics', mechanicId), { verified: true });
+        return true;
+    },
+    getAllJobs: async () => {
+        if (!db) return [];
+        const snap = await getDocs(query(collection(db, 'job_requests'), orderBy('createdAt', 'desc'), limit(100)));
+        return snap.docs.map(d => ({ id: d.id, ...convertTimestamps(d.data()) } as JobRequest));
     }
   }
 };
