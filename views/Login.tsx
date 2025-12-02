@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../App';
-import { Wrench, Mic, Lock, Mail, ArrowLeft, CheckCircle, ShieldCheck, User, Briefcase } from 'lucide-react';
+import { Wrench, Lock, Mail, ArrowLeft, CheckCircle } from 'lucide-react';
 import { api } from '../services/api';
 
 export const Login: React.FC = () => {
@@ -23,20 +23,20 @@ export const Login: React.FC = () => {
 
   const performLogin = async (uName: string, uEmail: string, uPass: string) => {
       try {
-        await login(uName, uEmail, uPass);
+        const user = await login(uName, uEmail, uPass);
         
-        // Router logic handled in App or simple redirect here
-        // We need to wait a tick for context to update, but usually the UI reacts.
-        // For admin specifically:
-        if (uEmail.includes('admin')) {
-            navigate('/admin');
-        } else if (uEmail.includes('mechanic')) {
-            navigate('/mechanic-dashboard');
-        } else {
-            navigate('/profile');
+        // Route based on User Profile Role
+        if (user) {
+            if (user.isAdmin) {
+                navigate('/admin');
+            } else if (user.isMechanic) {
+                navigate('/mechanic-dashboard');
+            } else {
+                navigate('/profile');
+            }
         }
       } catch (error) {
-          // Handled by context usually, but good to have safety
+          // Error notification handled by context
       }
   };
 
@@ -51,16 +51,6 @@ export const Login: React.FC = () => {
           setResetSent(true);
       } catch (e: any) {
           notify('Error', e.message || 'Failed to send reset email');
-      }
-  };
-
-  const handleQuickLogin = (type: 'admin' | 'mechanic' | 'customer') => {
-      if (type === 'admin') {
-          performLogin('Admin User', 'admin@mechanicnow.com', 'admin123');
-      } else if (type === 'mechanic') {
-          performLogin('Mike Mechanic', 'mike@mechanic.com', 'mech123');
-      } else {
-          performLogin('John Doe', 'john@example.com', 'user123');
       }
   };
 
@@ -175,35 +165,6 @@ export const Login: React.FC = () => {
                     </span>
                 </div>
             </div>
-
-            {/* DEMO QUICK LOGIN SECTION */}
-            <div className="mt-8 pt-6 border-t border-slate-100">
-                <p className="text-[10px] font-bold text-slate-400 text-center uppercase tracking-widest mb-4">Demo Quick Access</p>
-                <div className="grid grid-cols-3 gap-3">
-                    <button 
-                        onClick={() => handleQuickLogin('customer')}
-                        className="flex flex-col items-center justify-center p-3 rounded-xl bg-slate-50 hover:bg-slate-100 transition-colors border border-slate-100"
-                    >
-                        <User size={20} className="text-slate-400 mb-1"/>
-                        <span className="text-xs font-bold text-slate-600">Customer</span>
-                    </button>
-                    <button 
-                        onClick={() => handleQuickLogin('mechanic')}
-                        className="flex flex-col items-center justify-center p-3 rounded-xl bg-slate-50 hover:bg-blue-50 transition-colors border border-slate-100 group"
-                    >
-                        <Briefcase size={20} className="text-slate-400 group-hover:text-blue-500 mb-1"/>
-                        <span className="text-xs font-bold text-slate-600 group-hover:text-blue-600">Mechanic</span>
-                    </button>
-                    <button 
-                        onClick={() => handleQuickLogin('admin')}
-                        className="flex flex-col items-center justify-center p-3 rounded-xl bg-slate-50 hover:bg-slate-900 transition-colors border border-slate-100 group"
-                    >
-                        <ShieldCheck size={20} className="text-slate-400 group-hover:text-white mb-1"/>
-                        <span className="text-xs font-bold text-slate-600 group-hover:text-white">Owner</span>
-                    </button>
-                </div>
-            </div>
-
         </div>
       </div>
     </div>

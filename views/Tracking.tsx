@@ -6,7 +6,32 @@ import { BookingStatus, Mechanic, ServiceItem, Vehicle, GeoLocation } from '../t
 import { Phone, MessageSquare, CheckCircle, MapPin, ArrowLeft, Wrench, Star, Navigation, Send, X, AlertTriangle, HelpCircle } from 'lucide-react';
 import { api } from '../services/api';
 
-const LiveMap = ({ mechanicPos, customerPos, rotation }: { mechanicPos: {x: number, y: number}, customerPos: {x: number, y: number}, rotation: number }) => {
+// Helper to calculate bearing between two points
+const toRad = (deg: number) => deg * Math.PI / 180;
+const toDeg = (rad: number) => rad * 180 / Math.PI;
+
+const calculateBearing = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+    const dLon = toRad(lon2 - lon1);
+    const y = Math.sin(dLon) * Math.cos(toRad(lat2));
+    const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) - 
+              Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(dLon);
+    const brng = toDeg(Math.atan2(y, x));
+    return (brng + 360) % 360;
+};
+
+const LiveMap = ({ 
+  mechanicPos, 
+  customerPos, 
+  rotation,
+  realMechanicLocation,
+  realCustomerLocation 
+}: { 
+  mechanicPos: {x: number, y: number}, 
+  customerPos: {x: number, y: number}, 
+  rotation: number,
+  realMechanicLocation: GeoLocation | null,
+  realCustomerLocation: GeoLocation | null
+}) => {
   const mapRef = useRef<HTMLDivElement>(null);
   const leafletMap = useRef<any>(null);
   const mechanicMarkerRef = useRef<any>(null);
@@ -27,14 +52,34 @@ const LiveMap = ({ mechanicPos, customerPos, rotation }: { mechanicPos: {x: numb
 
     const L = (window as any).L;
 
-    // Update Customer Marker
-    const cLat = 37.7749 + (customerPos.y - 50) * 0.0001;
-    const cLng = -122.4194 + (customerPos.x - 50) * 0.0001;
-    
-    // Mechanic Position logic
-    const mLat = 37.7749 + (mechanicPos.y - 50) * 0.0001; 
-    const mLng = -122.4194 + (mechanicPos.x - 50) * 0.0001;
+    // Determine Coordinates
+    // Default to Hampton Roads if nothing else available
+    let cLat = 36.8508;
+    let cLng = -76.2859;
 
+    if (realCustomerLocation) {
+        cLat = realCustomerLocation.lat;
+        cLng = realCustomerLocation.lng;
+    } else {
+        // Fallback simulation base
+        cLat = 36.8508 + (customerPos.y - 50) * 0.0001;
+        cLng = -76.2859 + (customerPos.x - 50) * 0.0001;
+    }
+
+    let mLat = cLat;
+    let mLng = cLng;
+
+    if (realMechanicLocation) {
+        mLat = realMechanicLocation.lat;
+        mLng = realMechanicLocation.lng;
+    } else {
+        // Simulation relative to customer (mechanicPos is 0-100)
+        // Scale factor: 0.0005 degrees per unit approx 50 meters
+        mLat = cLat + (mechanicPos.y - 50) * 0.0005;
+        mLng = cLng + (mechanicPos.x - 50) * 0.0005;
+    }
+
+    // Update Customer Marker
     if (!customerMarkerRef.current) {
         const icon = L.divIcon({
             className: 'custom-div-icon',
@@ -46,11 +91,12 @@ const LiveMap = ({ mechanicPos, customerPos, rotation }: { mechanicPos: {x: numb
         customerMarkerRef.current.setLatLng([cLat, cLng]);
     }
 
+    // Update Mechanic Marker
     if (!mechanicMarkerRef.current) {
          const carIcon = L.divIcon({
             className: 'custom-div-icon',
             html: `
-            <div style="transform: rotate(${rotation}deg); transition: transform 0.3s ease;">
+            <div style="transform: rotate(${rotation}deg); transition: transform 0.5s linear;">
                 <div style="width: 20px; height: 36px; background: #1e293b; border-radius: 4px; position: relative; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">
                     <div style="width: 16px; height: 10px; background: #334155; position: absolute; top: 6px; left: 2px; border-radius: 2px;"></div>
                     <div style="width: 4px; height: 4px; background: #fbbf24; border-radius: 50%; position: absolute; top: 2px; left: 2px;"></div>
@@ -63,13 +109,24 @@ const LiveMap = ({ mechanicPos, customerPos, rotation }: { mechanicPos: {x: numb
         mechanicMarkerRef.current = L.marker([mLat, mLng], { icon: carIcon }).addTo(leafletMap.current);
     } else {
         mechanicMarkerRef.current.setLatLng([mLat, mLng]);
+        // Update rotation
+        const icon = mechanicMarkerRef.current.options.icon;
+        icon.options.html = `
+            <div style="transform: rotate(${rotation}deg); transition: transform 0.5s linear;">
+                <div style="width: 20px; height: 36px; background: #1e293b; border-radius: 4px; position: relative; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">
+                    <div style="width: 16px; height: 10px; background: #334155; position: absolute; top: 6px; left: 2px; border-radius: 2px;"></div>
+                    <div style="width: 4px; height: 4px; background: #fbbf24; border-radius: 50%; position: absolute; top: 2px; left: 2px;"></div>
+                    <div style="width: 4px; height: 4px; background: #fbbf24; border-radius: 50%; position: absolute; top: 2px; right: 2px;"></div>
+                </div>
+            </div>`;
+        mechanicMarkerRef.current.setIcon(icon);
     }
 
     // Fit bounds to keep both in view
     const bounds = L.latLngBounds([cLat, cLng], [mLat, mLng]);
-    leafletMap.current.fitBounds(bounds, { padding: [100, 100], maxZoom: 16 });
+    leafletMap.current.fitBounds(bounds, { padding: [100, 100], maxZoom: 16, animate: true });
 
-  }, [mechanicPos, customerPos, rotation]);
+  }, [mechanicPos, customerPos, rotation, realMechanicLocation, realCustomerLocation]);
 
   return <div ref={mapRef} className="w-full h-full bg-slate-200" />;
 };
@@ -239,6 +296,7 @@ export const Tracking: React.FC = () => {
     const [carRotation, setCarRotation] = useState(180);
     
     const useRealGps = useRef(false);
+    const prevDriverLoc = useRef<GeoLocation | null>(null);
 
     // 1. Live GPS Tracking (Customer)
     useEffect(() => {
@@ -281,6 +339,16 @@ export const Tracking: React.FC = () => {
             });
 
             if (job.driverLocation) {
+                // Calculate rotation based on previous location
+                if (prevDriverLoc.current) {
+                    const dist = Math.sqrt(Math.pow(job.driverLocation.lat - prevDriverLoc.current.lat, 2) + Math.pow(job.driverLocation.lng - prevDriverLoc.current.lng, 2));
+                    // Only update rotation if movement is significant (> ~5-10 meters) to avoid jitter
+                    if (dist > 0.00005) {
+                        const angle = calculateBearing(prevDriverLoc.current.lat, prevDriverLoc.current.lng, job.driverLocation.lat, job.driverLocation.lng);
+                        setCarRotation(angle);
+                    }
+                }
+                prevDriverLoc.current = job.driverLocation;
                 setDriverRealLoc(job.driverLocation);
                 useRealGps.current = true;
             }
@@ -289,15 +357,14 @@ export const Tracking: React.FC = () => {
         return () => unsubscribe();
     }, [bookingData?.jobId]); 
 
-    // 3. Coordinate Projection 
+    // 3. Coordinate Projection (Visual simulation for fallback)
     useEffect(() => {
         if (status === BookingStatus.CONFIRMED || status === BookingStatus.EN_ROUTE) {
             setTargetMechanicPos({ x: 50, y: 50 }); // Move to center visual logic
         }
     }, [status]);
 
-
-    // 4. Smooth Animation Loop (Lerp)
+    // 4. Smooth Animation Loop (Lerp for fallback visual)
     useEffect(() => {
         let animId: number;
         
@@ -358,7 +425,13 @@ export const Tracking: React.FC = () => {
             </button>
 
             <div className="absolute inset-0 z-0">
-                <LiveMap mechanicPos={mechanicPos} customerPos={{x: 50, y: 50}} rotation={carRotation} />
+                <LiveMap 
+                    mechanicPos={mechanicPos} 
+                    customerPos={{x: 50, y: 50}} 
+                    rotation={carRotation}
+                    realMechanicLocation={driverRealLoc}
+                    realCustomerLocation={customerRealLoc}
+                />
                 
                 {/* Overlay Gradients for Depth */}
                 <div className="absolute top-0 left-0 right-0 h-32 bg-gradient-to-b from-white/90 to-transparent pointer-events-none z-0"></div>

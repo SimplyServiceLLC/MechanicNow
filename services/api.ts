@@ -1,6 +1,4 @@
 
-
-
 import { UserProfile, JobRequest, PaymentMethod, Mechanic, MechanicRegistrationData } from '../types';
 import * as firebaseApp from 'firebase/app';
 import * as firebaseAuth from 'firebase/auth';
@@ -32,45 +30,33 @@ const firebaseConfig = {
   measurementId: process.env.FIREBASE_MEASUREMENT_ID
 };
 
-// Check if keys exist to determine mode
-const isFirebaseConfigured = !!(firebaseConfig.apiKey && firebaseConfig.projectId);
-
 let db: any, auth: any, storage: any, functions: any;
-let connectionMode: 'MOCK' | 'REAL' = 'MOCK';
 
-if (isFirebaseConfigured) {
-  try {
-    // Attempt to initialize using different export patterns to handle environment inconsistencies
-    const app = (firebaseApp as any).initializeApp 
-      ? (firebaseApp as any).initializeApp(firebaseConfig) 
-      : (firebaseApp as any).default.initializeApp(firebaseConfig);
-      
-    db = getFirestore(app);
-    auth = getAuth(app);
-    storage = getStorage(app);
-    functions = getFunctions(app);
+try {
+  // Attempt to initialize using different export patterns to handle environment inconsistencies
+  const app = (firebaseApp as any).initializeApp 
+    ? (firebaseApp as any).initializeApp(firebaseConfig) 
+    : (firebaseApp as any).default.initializeApp(firebaseConfig);
     
-    // Lazy load analytics with safety check for named export vs default export
-    if (typeof window !== 'undefined') {
-       import('firebase/analytics').then((analyticsMod: any) => {
-          const getAnalytics = analyticsMod.getAnalytics || analyticsMod.default?.getAnalytics;
-          if (getAnalytics) {
-            try { getAnalytics(app); } catch (e) { console.warn("Analytics failed to load", e); }
-          }
-       });
-    }
-
-    connectionMode = 'REAL';
-    console.log(`✅ [MechanicNow] Connected to Google Cloud: ${firebaseConfig.projectId}`);
-  } catch (e) {
-    console.error("❌ Firebase initialization failed. Falling back to Mock Mode.", e);
+  db = getFirestore(app);
+  auth = getAuth(app);
+  storage = getStorage(app);
+  functions = getFunctions(app);
+  
+  // Lazy load analytics with safety check for named export vs default export
+  if (typeof window !== 'undefined') {
+      import('firebase/analytics').then((analyticsMod: any) => {
+        const getAnalytics = analyticsMod.getAnalytics || analyticsMod.default?.getAnalytics;
+        if (getAnalytics) {
+          try { getAnalytics(app); } catch (e) { console.warn("Analytics failed to load", e); }
+        }
+      });
   }
-} else {
-    console.warn("⚠️ No valid Firebase Config found. Running in MOCK MODE.");
-}
 
-// --- Helper to simulate network latency for Mock Mode ---
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms / 2));
+  console.log(`✅ [MechanicNow] Connected to Google Cloud: ${firebaseConfig.projectId}`);
+} catch (e) {
+  console.error("❌ Firebase initialization failed. Please check your configuration.", e);
+}
 
 // --- Data Conversion Helper ---
 const convertTimestamps = (data: any): any => {
@@ -93,320 +79,6 @@ const convertTimestamps = (data: any): any => {
     return newData;
 };
 
-// --- Mock Data (Fallback) ---
-const MOCK_REQUESTS: JobRequest[] = []; 
-const DEFAULT_EARNINGS = { today: 0, week: 0, month: 0 };
-
-// --- Persistence Helper (Mock Mode) ---
-const getDbItem = <T>(key: string, defaultVal: T): T => {
-  const item = localStorage.getItem(key);
-  return item ? JSON.parse(item) : defaultVal;
-};
-
-const setDbItem = (key: string, val: any) => localStorage.setItem(key, JSON.stringify(val));
-
-// --- MOCK API ---
-const MockApi = {
-  status: { getConnectionInfo: () => ({ mode: 'MOCK' as const, connected: true, provider: 'Local Storage' }) },
-  auth: {
-    login: async (name: string, email: string) => {
-      await delay(600); 
-      
-      // Admin Login Check
-      if (email.toLowerCase() === 'admin@mechanicnow.com') {
-          const adminUser: UserProfile = {
-              id: 'admin_001',
-              name: 'Administrator',
-              email: email,
-              avatar: 'https://ui-avatars.com/api/?name=Admin&background=1e293b&color=fff',
-              vehicles: [],
-              history: [],
-              isAdmin: true
-          };
-          setDbItem('mn_user', adminUser);
-          return adminUser;
-      }
-
-      // User starts with empty garage in Real Mode.
-      // We check if this user exists in LS, if not create new.
-      let existing = getDbItem<UserProfile | null>('mn_user', null);
-      if (!existing || existing.email !== email) {
-           const newUser: UserProfile = {
-            id: 'u1', 
-            name, 
-            email, 
-            avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=0D8ABC&color=fff`,
-            vehicles: [], 
-            history: []
-          };
-          setDbItem('mn_user', newUser);
-          return newUser;
-      }
-      return existing;
-    },
-    logout: async () => { await delay(200); localStorage.removeItem('mn_user'); },
-    getCurrentUser: async () => { await delay(400); return getDbItem<UserProfile | null>('mn_user', null); },
-    updateProfile: async (user: UserProfile) => { await delay(300); setDbItem('mn_user', user); return user; },
-    resetPassword: async (email: string) => { await delay(500); console.log(`[Mock] Password reset email sent to ${email}`); }
-  },
-  payment: {
-    // Mock Stripe Create Payment Intent with Connect logic
-    createPaymentIntent: async (amount: number, currency: string = 'usd', mechanicId?: string) => {
-        await delay(800);
-        return { clientSecret: 'pi_mock_secret_12345_secret_54321', id: 'pi_mock_12345' };
-    },
-    authorize: async (amount: number, method: PaymentMethod) => {
-        await delay(1500);
-        return { success: true, transactionId: `tx_${Math.random().toString(36).substr(2, 9)}` };
-    },
-    capture: async (jobId: string, amount: number) => {
-        await delay(1000);
-        // Simulate fee deduction and transfer
-        const platformFee = amount * 0.2;
-        const netToMechanic = amount - platformFee;
-        console.log(`[Stripe Mock] Captured Payment of $${amount}.`);
-        console.log(`[Stripe Mock] Platform Fee (20%): -$${platformFee.toFixed(2)}`);
-        console.log(`[Stripe Mock] Transferred to Connected Account: $${netToMechanic.toFixed(2)}`);
-        return { success: true };
-    }
-  },
-  notifications: {
-      sendSMS: async (phone: string, message: string) => {
-          console.log(`%c[Twilio SMS] To ${phone}: ${message}`, 'color: #ec4899; font-weight: bold; padding: 4px; border: 1px solid #ec4899; border-radius: 4px;');
-          return true;
-      },
-      sendEmail: async (email: string, subject: string, body: string) => {
-          console.log(`%c[SendGrid Email] To ${email}: ${subject}`, 'color: #3b82f6; font-weight: bold; padding: 4px; border: 1px solid #3b82f6; border-radius: 4px;');
-          return true;
-      }
-  },
-  storage: {
-      uploadFile: async (file: File, path: string) => {
-          await delay(1500);
-          console.log(`[Mock Storage] Uploaded ${file.name} to ${path}`);
-          return `https://mock-storage.com/${path}/${file.name}`;
-      }
-  },
-  support: {
-      createTicket: async (jobId: string, subject: string, message: string) => {
-          await delay(1000);
-          console.log(`[Mock Support] Ticket created for Job ${jobId}: ${subject}`);
-          return "ticket_123";
-      }
-  },
-  mechanic: {
-    register: async (data: MechanicRegistrationData) => {
-        await delay(1000);
-        const newMechanic: Mechanic = {
-            id: `mech_${Date.now()}`,
-            name: data.name,
-            rating: 5.0, 
-            jobsCompleted: 0,
-            avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(data.name)}&background=10b981&color=fff`,
-            distance: '0.5 mi',
-            eta: 'Available Now',
-            availability: 'Available Now',
-            yearsExperience: data.yearsExperience,
-            bio: data.bio,
-            specialties: data.specialties,
-            certifications: data.certifications,
-            reviews: [],
-            verified: false // New mechanics start unverified
-        };
-        
-        const existingMechanics = getDbItem<Mechanic[]>('mn_registered_mechanics', []);
-        setDbItem('mn_registered_mechanics', [newMechanic, ...existingMechanics]);
-
-        const newUser: UserProfile = {
-            id: newMechanic.id,
-            name: data.name,
-            email: data.email,
-            avatar: newMechanic.avatar,
-            vehicles: [],
-            history: [],
-            isMechanic: true
-        };
-        setDbItem('mn_user', newUser);
-        await MockApi.notifications.sendEmail(data.email, "Welcome to MechanicNow", "Your application is under review.");
-        return newUser;
-    },
-    verifyBackground: async (email: string, ssn: string) => {
-        await delay(2000);
-        return { status: 'pending', checkId: 'checkr_123' };
-    },
-    getNearbyMechanics: async (lat: number, lng: number): Promise<Mechanic[]> => {
-      await delay(600);
-      const storedMechanics = getDbItem<Mechanic[]>('mn_registered_mechanics', []);
-      const ghostMechanics: Mechanic[] = Array.from({ length: 4 }).map((_, i) => ({
-          id: `sim_${i}_${Date.now()}`,
-          name: ['Mike R.', 'Sarah L.', 'Dave C.', 'Jose M.'][i],
-          rating: 4.8 + (Math.random() * 0.2),
-          jobsCompleted: 100 + Math.floor(Math.random() * 500),
-          avatar: `https://ui-avatars.com/api/?name=Mechanic+${i}&background=random`,
-          distance: `${(Math.random() * 3).toFixed(1)} mi`,
-          eta: `${10 + Math.floor(Math.random() * 20)} min`,
-          availability: 'Available Now',
-          lat: lat + (Math.random() - 0.5) * 0.03, 
-          lng: lng + (Math.random() - 0.5) * 0.03,
-          specialties: ['Brakes', 'Oil', 'General'],
-          yearsExperience: 5,
-          verified: true
-      }));
-      
-      const m1Mechanic: Mechanic = {
-          id: 'm1',
-          name: 'Top Rated Pro (m1)',
-          rating: 5.0,
-          jobsCompleted: 1542,
-          avatar: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?ixlib=rb-4.0.3&auto=format&fit=crop&w=256&q=80',
-          distance: '0.3 mi',
-          eta: '5 min',
-          availability: 'Available Now',
-          lat: lat + 0.002,
-          lng: lng + 0.002,
-          specialties: ['Diagnostics', 'Engine', 'Electrical'],
-          yearsExperience: 12,
-          bio: 'Master Technician with 12 years of experience. Specializing in diagnostics and electrical systems.',
-          certifications: ['ASE Master', 'Hybrid Specialist'],
-          verified: true
-      };
-      
-      const currentUser = getDbItem<UserProfile | null>('mn_user', null);
-      let finalList = [m1Mechanic, ...storedMechanics, ...ghostMechanics];
-      return finalList;
-    },
-    getDashboardData: async () => {
-      await delay(300);
-      return { 
-        requests: getDbItem('mn_dashboard_requests', MOCK_REQUESTS), 
-        earnings: getDbItem('mn_earnings_stats', DEFAULT_EARNINGS), 
-        isOnline: getDbItem('mn_is_online', false),
-        stripeConnected: getDbItem('mn_stripe_connected', false)
-      };
-    },
-    createStripeConnectAccount: async () => {
-        await delay(800);
-        return { 
-            url: window.location.href + '?code=mock_auth_code', // Mock redirect loop
-            accountId: 'acct_mock_12345'
-        };
-    },
-    onboardStripe: async (authCode?: string) => {
-        await delay(1500);
-        setDbItem('mn_stripe_connected', true);
-        return { success: true, stripeId: 'acct_mock_12345' };
-    },
-    payoutToBank: async (amount: number) => {
-        await delay(2000);
-        const current = getDbItem('mn_earnings_stats', DEFAULT_EARNINGS);
-        const updated = { ...current, week: 0 };
-        setDbItem('mn_earnings_stats', updated);
-        console.log(`[Mock Payout] Initiated transfer of $${amount} to external bank account.`);
-        return { success: true, payoutId: `po_${Date.now()}` };
-    },
-    createJobRequest: async (job: JobRequest) => {
-      const requests = getDbItem<JobRequest[]>('mn_dashboard_requests', MOCK_REQUESTS);
-      const newJob = { ...job, createdAt: new Date().toISOString() };
-      setDbItem('mn_dashboard_requests', [newJob, ...requests]);
-      if (job.mechanicId) {
-          MockApi.notifications.sendSMS("+15550000000", `New Job: ${job.vehicle} - ${job.issue}. Payout: $${job.payout.toFixed(2)}`);
-      }
-      return job.id;
-    },
-    updateStatus: async (isOnline: boolean) => { 
-        setDbItem('mn_is_online', isOnline); 
-        return isOnline; 
-    },
-    updateJobRequest: async (updatedJob: JobRequest) => {
-      const requests = getDbItem<JobRequest[]>('mn_dashboard_requests', MOCK_REQUESTS);
-      setDbItem('mn_dashboard_requests', requests.map(r => r.id === updatedJob.id ? updatedJob : r));
-      return updatedJob;
-    },
-    updateLocation: async (jobId: string, lat: number, lng: number) => {
-        const requests = getDbItem<JobRequest[]>('mn_dashboard_requests', MOCK_REQUESTS);
-        const updated = requests.map(r => r.id === jobId ? { ...r, driverLocation: { lat, lng } } : r);
-        setDbItem('mn_dashboard_requests', updated);
-    },
-    deleteJobRequest: async (jobId: string) => {
-      const requests = getDbItem<JobRequest[]>('mn_dashboard_requests', MOCK_REQUESTS);
-      setDbItem('mn_dashboard_requests', requests.filter(r => r.id !== jobId));
-      return true;
-    },
-    updateEarnings: async (amount: number) => { 
-        const current = getDbItem('mn_earnings_stats', DEFAULT_EARNINGS);
-        const updated = {
-            today: current.today + amount,
-            week: current.week + amount,
-            month: current.month + amount
-        };
-        setDbItem('mn_earnings_stats', updated);
-        return updated;
-    },
-    resetDemoData: async () => {
-      localStorage.removeItem('mn_dashboard_requests');
-      localStorage.removeItem('mn_earnings_stats');
-      localStorage.removeItem('mn_stripe_connected');
-      return { requests: MOCK_REQUESTS, earnings: DEFAULT_EARNINGS, isOnline: false };
-    },
-    subscribeToJobRequest: (jobId: string, callback: (job: JobRequest) => void) => {
-        const interval = setInterval(() => {
-            const job = getDbItem<JobRequest[]>('mn_dashboard_requests', MOCK_REQUESTS).find(r => r.id === jobId);
-            if (job) callback(job);
-        }, 1000);
-        return () => clearInterval(interval);
-    },
-    subscribeToDashboard: (callback: (data: any) => void) => {
-         const interval = setInterval(() => {
-            callback({ 
-                requests: getDbItem('mn_dashboard_requests', MOCK_REQUESTS),
-                earnings: getDbItem('mn_earnings_stats', DEFAULT_EARNINGS),
-                stripeConnected: getDbItem('mn_stripe_connected', false)
-            });
-         }, 1000);
-         return () => clearInterval(interval);
-    }
-  },
-  admin: {
-    getStats: async () => {
-        await delay(500);
-        const jobs = getDbItem<JobRequest[]>('mn_dashboard_requests', MOCK_REQUESTS);
-        const mechanics = getDbItem<Mechanic[]>('mn_registered_mechanics', []);
-        
-        const totalRevenue = jobs.reduce((acc, job) => acc + (job.priceBreakdown?.platformFee || 0), 0);
-        const completedJobs = jobs.filter(j => j.status === 'COMPLETED').length;
-        
-        return {
-            totalUsers: 125, // Mock number
-            totalMechanics: mechanics.length + 5, // Include built-in mocks
-            totalJobs: jobs.length,
-            completedJobs,
-            totalRevenue
-        };
-    },
-    getAllMechanics: async () => {
-        await delay(600);
-        // Combine registered and mock
-        const registered = getDbItem<Mechanic[]>('mn_registered_mechanics', []);
-        const mocks: Mechanic[] = [
-            { id: 'm1', name: 'Top Rated Pro (m1)', email: 'pro@test.com', rating: 5.0, jobsCompleted: 1542, avatar: '', verified: true, availability: 'Available Now' } as any
-        ];
-        return [...registered, ...mocks];
-    },
-    approveMechanic: async (mechanicId: string) => {
-        await delay(500);
-        const mechanics = getDbItem<Mechanic[]>('mn_registered_mechanics', []);
-        const updated = mechanics.map(m => m.id === mechanicId ? { ...m, verified: true } : m);
-        setDbItem('mn_registered_mechanics', updated);
-        return true;
-    },
-    getAllJobs: async () => {
-        await delay(600);
-        return getDbItem<JobRequest[]>('mn_dashboard_requests', MOCK_REQUESTS);
-    }
-  }
-};
-
-// --- REAL FIREBASE API ---
 const mapUser = (user: User, data?: any): UserProfile => ({
   id: user.uid,
   name: user.displayName || data?.name || 'User',
@@ -803,7 +475,7 @@ const RealApi = {
     },
 
     updateEarnings: async (amount: number) => {
-       if (!auth?.currentUser) return DEFAULT_EARNINGS;
+       if (!auth?.currentUser) return { today: 0, week: 0, month: 0 };
        
        const statsRef = doc(db, 'mechanics', auth.currentUser.uid);
        await updateDoc(statsRef, {
@@ -816,7 +488,8 @@ const RealApi = {
     },
 
     resetDemoData: async () => {
-       return { requests: [], earnings: DEFAULT_EARNINGS, isOnline: false };
+       // No-op in real api
+       return { requests: [], earnings: { today: 0, week: 0, month: 0 }, isOnline: false };
     },
 
     subscribeToJobRequest: (jobId: string, callback: (job: JobRequest) => void) => {
@@ -854,65 +527,4 @@ const RealApi = {
             mergeAndNotify();
         });
 
-        const unsubMy = onSnapshot(qMy, (snapshot) => {
-            myJobs = snapshot.docs.map((d) => ({ id: d.id, ...convertTimestamps(d.data()) } as JobRequest));
-            mergeAndNotify();
-        });
-        
-        const unsubMech = onSnapshot(doc(db, 'mechanics', auth.currentUser.uid), (docSnap) => {
-            if (docSnap.exists()) {
-                const data = docSnap.data();
-                callback({ 
-                    earnings: data.earnings || DEFAULT_EARNINGS, 
-                    stripeConnected: data.stripeConnected,
-                    isOnline: data.isOnline
-                });
-            }
-        });
-
-        return () => {
-            unsubNew();
-            unsubMy();
-            unsubMech();
-        };
-    }
-  },
-  admin: {
-    getStats: async () => {
-        if (!db) return { totalUsers: 0, totalMechanics: 0, totalJobs: 0, completedJobs: 0, totalRevenue: 0 };
-        // Expensive operations in real DB, consider cloud functions aggregation in production
-        const usersSnap = await getDocs(query(collection(db, 'users')));
-        const mechanicsSnap = await getDocs(query(collection(db, 'mechanics')));
-        const jobsSnap = await getDocs(query(collection(db, 'job_requests'), limit(1000)));
-        
-        const jobs = jobsSnap.docs.map(d => d.data());
-        const totalRevenue = jobs.reduce((acc, job) => acc + (job.priceBreakdown?.platformFee || 0), 0);
-        const completedJobs = jobs.filter((j: any) => j.status === 'COMPLETED').length;
-        
-        return {
-            totalUsers: usersSnap.size,
-            totalMechanics: mechanicsSnap.size,
-            totalJobs: jobs.length,
-            completedJobs,
-            totalRevenue
-        };
-    },
-    getAllMechanics: async () => {
-        if (!db) return [];
-        const snap = await getDocs(collection(db, 'mechanics'));
-        return snap.docs.map(d => ({ id: d.id, ...d.data() } as Mechanic));
-    },
-    approveMechanic: async (mechanicId: string) => {
-        if (!db) return false;
-        await updateDoc(doc(db, 'mechanics', mechanicId), { verified: true });
-        return true;
-    },
-    getAllJobs: async () => {
-        if (!db) return [];
-        const snap = await getDocs(query(collection(db, 'job_requests'), orderBy('createdAt', 'desc'), limit(100)));
-        return snap.docs.map(d => ({ id: d.id, ...convertTimestamps(d.data()) } as JobRequest));
-    }
-  }
-};
-
-export const api = connectionMode === 'REAL' ? RealApi : MockApi;
+        const unsubMy = on

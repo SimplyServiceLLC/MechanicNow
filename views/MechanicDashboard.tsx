@@ -23,6 +23,7 @@ const DashboardMap = ({ requests, activeId, onSelect, mechanicLocation }: { requ
   const leafletMap = useRef<any>(null);
   const markers = useRef<Map<string, any>>(new Map());
   const mechanicMarker = useRef<any>(null);
+  const hasCentered = useRef(false);
 
   useEffect(() => {
     if (!mapRef.current || !(window as any).L) return;
@@ -32,7 +33,7 @@ const DashboardMap = ({ requests, activeId, onSelect, mechanicLocation }: { requ
         const map = L.map(mapRef.current, {
             zoomControl: false,
             attributionControl: false
-        }).setView([36.8508, -76.2859], 12); // Hampton Roads
+        }).setView([36.8508, -76.2859], 12); // Hampton Roads Default
 
         L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
             maxZoom: 19
@@ -40,6 +41,14 @@ const DashboardMap = ({ requests, activeId, onSelect, mechanicLocation }: { requ
         leafletMap.current = map;
     }
   }, []);
+
+  // Auto-center on mechanic location once available
+  useEffect(() => {
+    if (mechanicLocation && leafletMap.current && !hasCentered.current) {
+        leafletMap.current.setView([mechanicLocation.lat, mechanicLocation.lng], 13);
+        hasCentered.current = true;
+    }
+  }, [mechanicLocation]);
 
   // Update Job Pins
   useEffect(() => {
@@ -775,7 +784,8 @@ export const MechanicDashboard: React.FC = () => {
         <div className="flex-1 flex flex-col overflow-hidden relative">
             {activeTab === 'requests' && (
                 <div className="flex-1 flex flex-col md:flex-row h-full">
-                    <div className="w-full md:w-96 bg-white border-r border-slate-200 flex flex-col z-10 shadow-xl md:shadow-none">
+                    {/* List Container - Full width on mobile, fixed width on desktop */}
+                    <div className="w-full md:w-96 bg-white border-r border-slate-200 flex flex-col z-10 shadow-xl md:shadow-none h-full">
                         <div className="p-6 border-b border-slate-100 bg-white">
                             <h2 className="text-2xl font-bold text-slate-900 mb-4">Job Requests</h2>
                             <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
@@ -831,7 +841,8 @@ export const MechanicDashboard: React.FC = () => {
                             ))}
                         </div>
                     </div>
-                    <div className="flex-1 bg-gray-100 relative flex flex-col">
+                    {/* Hide map on mobile for requests tab, forcing use of Map tab for map on mobile */}
+                    <div className="hidden md:flex flex-1 bg-gray-100 relative flex-col">
                         <DashboardMap 
                             requests={visibleRequests} 
                             activeId={selectedJobId} 

@@ -27,7 +27,7 @@ interface Notification {
 interface AppContextType {
   user: UserProfile | null;
   isLoading: boolean;
-  login: (name: string, email: string, password?: string) => Promise<void>;
+  login: (name: string, email: string, password?: string) => Promise<UserProfile | null>;
   logout: () => Promise<void>;
   addVehicle: (v: Vehicle) => Promise<void>;
   updateVehicle: (v: Vehicle) => Promise<void>;
@@ -364,9 +364,11 @@ const App: React.FC = () => {
       const newUser = await api.auth.login(name, email, password);
       setUser(newUser);
       notify('Welcome Back!', `Signed in as ${newUser.name}`);
+      return newUser;
     } catch (e: any) {
       console.error(e);
       notify('Error', e.message || 'Login failed');
+      throw e;
     } finally {
       setIsLoading(false);
     }
