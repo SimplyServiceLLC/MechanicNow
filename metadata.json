@@ -1,6 +1,6 @@
 {
   "name": "MechanicNow",
-  "description": "The Uber for Mechanics. Instant quotes, AI diagnostics, and qualified mobile mechanics that come to you.",
+  "description": "On-Demand Mobile Mechanics. Instant quotes, AI diagnostics, and qualified mobile mechanics that come to you.",
   "requestFramePermissions": [
     "geolocation",
     "microphone"

@@ -1,5 +1,6 @@
+
 import React, { useState, createContext, useContext, useEffect } from 'react';
-import { Wrench, Menu, X, Bell, Mic, Loader2, AlertTriangle, ShieldCheck, User, Calendar, MapPin, Briefcase, LayoutDashboard } from 'lucide-react';
+import { Wrench, Menu, X, Bell, Mic, Loader2, AlertTriangle, ShieldCheck, User, Calendar, MapPin, Briefcase, LayoutDashboard, Home as HomeIcon, Clock, Settings, Search } from 'lucide-react';
 import { Home } from './views/Home';
 import { Booking } from './views/Booking';
 import { MechanicList } from './views/MechanicList';
@@ -16,7 +17,7 @@ import { api } from './services/api';
 /* --- Custom Router Implementation (replacing react-router-dom) --- */
 const RouterContext = createContext<{ path: string; search: string; navigate: (path: string, options?: any) => void; state: any } | null>(null);
 
-export const HashRouter = ({ children }: { children: React.ReactNode }) => {
+export const HashRouter = ({ children }: { children?: React.ReactNode }) => {
   const [path, setPath] = useState(window.location.hash.slice(1) || '/');
   const [state, setState] = useState<any>(null);
 
@@ -73,7 +74,7 @@ export const Navigate = ({ to, replace }: { to: string, replace?: boolean }) => 
     return null;
 };
 
-export const Routes = ({ children }: { children: React.ReactNode }) => {
+export const Routes = ({ children }: { children?: React.ReactNode }) => {
    const location = useLocation();
    let found: React.ReactNode = null;
    
@@ -178,48 +179,43 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
   }
 }
 
-const VoiceAssistant: React.FC = () => {
-  const [isListening, setIsListening] = useState(false);
+const CustomerBottomNav = () => {
+  const location = useLocation();
   const navigate = useNavigate();
-  const { notify } = useApp();
 
-  const toggleListen = () => {
-    if (!('webkitSpeechRecognition' in window)) {
-      notify('Error', 'Voice control not supported in this browser.');
-      return;
-    }
-
-    if (isListening) return;
-
-    const recognition = new (window as any).webkitSpeechRecognition();
-    recognition.continuous = false;
-    recognition.lang = 'en-US';
-
-    recognition.onstart = () => setIsListening(true);
-    recognition.onend = () => setIsListening(false);
-
-    recognition.onresult = (event: any) => {
-      const transcript = event.results[0][0].transcript.toLowerCase();
-      
-      if (transcript.includes('home')) navigate('/');
-      else if (transcript.includes('book') || transcript.includes('service')) navigate('/book');
-      else if (transcript.includes('profile')) navigate('/profile');
-      else if (transcript.includes('mechanic') || transcript.includes('dashboard')) navigate('/mechanic-dashboard');
-      else notify('Voice Assistant', `Heard: "${transcript}"`);
-    };
-
-    recognition.start();
-  };
+  const isActive = (path: string) => location.pathname === path;
 
   return (
-    <button 
-      onClick={toggleListen}
-      className={`fixed bottom-24 left-6 z-50 p-4 rounded-full shadow-xl transition-all transform hover:scale-105 ${isListening ? 'bg-red-500 animate-pulse text-white' : 'bg-slate-800 text-white'}`}
-      title="Voice Command"
-      style={{ marginBottom: 'env(safe-area-inset-bottom)' }}
-    >
-      <Mic size={24} />
-    </button>
+    <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-100 px-6 py-2 pb-[env(safe-area-inset-bottom)] flex justify-between items-center z-40 md:hidden shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+       <button 
+          onClick={() => navigate('/')}
+          className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all ${isActive('/') ? 'text-blue-600' : 'text-slate-400'}`}
+       >
+          <HomeIcon size={24} strokeWidth={isActive('/') ? 2.5 : 2} />
+          <span className="text-[10px] font-bold">Home</span>
+       </button>
+       <button 
+          onClick={() => navigate('/book')}
+          className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all ${isActive('/book') || isActive('/mechanics') ? 'text-blue-600' : 'text-slate-400'}`}
+       >
+          <Search size={24} strokeWidth={isActive('/book') ? 2.5 : 2} />
+          <span className="text-[10px] font-bold">Book</span>
+       </button>
+       <button 
+          onClick={() => navigate('/tracking')}
+          className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all ${isActive('/tracking') ? 'text-blue-600' : 'text-slate-400'}`}
+       >
+          <Clock size={24} strokeWidth={isActive('/tracking') ? 2.5 : 2} />
+          <span className="text-[10px] font-bold">Activity</span>
+       </button>
+       <button 
+          onClick={() => navigate('/profile')}
+          className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all ${isActive('/profile') ? 'text-blue-600' : 'text-slate-400'}`}
+       >
+          <User size={24} strokeWidth={isActive('/profile') ? 2.5 : 2} />
+          <span className="text-[10px] font-bold">Account</span>
+       </button>
+    </div>
   );
 };
 
@@ -234,6 +230,12 @@ const Layout = ({ children }: { children?: React.ReactNode }) => {
 
   // Specific check for Mechanic or Admin views to change header context
   const isPartnerView = location.pathname.includes('mechanic-dashboard') || location.pathname.includes('admin');
+  const isLoginView = location.pathname === '/login';
+
+  // Should we show the Customer Bottom Nav?
+  const showCustomerNav = user && !user.isMechanic && !user.isAdmin && !isPartnerView && !isLoginView;
+
+  if (isLoginView) return <>{children}</>;
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50 font-sans text-slate-800 pb-[env(safe-area-inset-bottom)]">
@@ -274,7 +276,7 @@ const Layout = ({ children }: { children?: React.ReactNode }) => {
                             onClick={() => navigate('/admin')}
                             className="flex items-center gap-2 text-sm font-bold px-3 py-2 rounded-full bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors"
                         >
-                            <ShieldCheck size={16} /> Admin
+                            <ShieldCheck size={16} /> Admin Panel
                         </button>
                    )}
                    
@@ -284,7 +286,7 @@ const Layout = ({ children }: { children?: React.ReactNode }) => {
                            onClick={() => navigate(isPartnerView ? '/' : '/mechanic-dashboard')}
                            className={`flex items-center gap-2 text-sm font-bold px-4 py-2 rounded-full transition-all border ${isPartnerView ? 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50' : (isAppView ? 'border-blue-100 bg-blue-50 text-blue-700 hover:bg-blue-100' : 'bg-white/10 text-white border-transparent hover:bg-white/20')}`}
                        >
-                           {isPartnerView ? <><User size={16}/> Customer Mode</> : <><Briefcase size={16}/> Partner Mode</>}
+                           {isPartnerView ? <><User size={16}/> Customer App</> : <><LayoutDashboard size={16}/> Dashboard</>}
                        </button>
                    )}
 
@@ -312,21 +314,23 @@ const Layout = ({ children }: { children?: React.ReactNode }) => {
               )}
             </nav>
 
-            {/* Mobile Menu Button */}
-            <button 
-              className="md:hidden p-2"
-              onClick={() => setIsMenuOpen(!isMenuOpen)}
-            >
-              {isMenuOpen ? 
-                <X className={isAppView || isPartnerView ? 'text-slate-900' : 'text-white'} /> : 
-                <Menu className={isAppView || isPartnerView ? 'text-slate-900' : 'text-white'} />
-              }
-            </button>
+            {/* Mobile Menu Button - Hide if logged in Customer since they have Bottom Nav */}
+            {!showCustomerNav && (
+                <button 
+                className="md:hidden p-2"
+                onClick={() => setIsMenuOpen(!isMenuOpen)}
+                >
+                {isMenuOpen ? 
+                    <X className={isAppView || isPartnerView ? 'text-slate-900' : 'text-white'} /> : 
+                    <Menu className={isAppView || isPartnerView ? 'text-slate-900' : 'text-white'} />
+                }
+                </button>
+            )}
           </div>
         </div>
 
-        {/* Mobile Menu */}
-        {isMenuOpen && (
+        {/* Mobile Menu Overlay */}
+        {isMenuOpen && !showCustomerNav && (
           <div className="absolute top-full left-0 right-0 bg-white shadow-xl md:hidden p-4 flex flex-col space-y-2 text-slate-800 animate-fade-in border-t border-gray-100 h-screen">
             {user ? (
               <>
@@ -345,12 +349,8 @@ const Layout = ({ children }: { children?: React.ReactNode }) => {
                 )}
 
                 <div className="space-y-1">
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider pl-4 mb-2 mt-4">Customer</p>
                     <button onClick={() => { navigate('/profile'); setIsMenuOpen(false); }} className="w-full p-4 text-left hover:bg-gray-50 rounded-xl flex items-center gap-3 font-medium text-slate-700">
                         <User size={20} className="text-slate-400"/> My Profile
-                    </button>
-                    <button onClick={() => { navigate('/book'); setIsMenuOpen(false); }} className="w-full p-4 text-left hover:bg-gray-50 rounded-xl flex items-center gap-3 font-medium text-slate-700">
-                        <Calendar size={20} className="text-slate-400"/> Book Service
                     </button>
                 </div>
 
@@ -385,10 +385,11 @@ const Layout = ({ children }: { children?: React.ReactNode }) => {
       </header>
 
       {/* Main Content with padding to account for fixed header + safe area */}
-      <main className="flex-grow pt-[calc(72px+env(safe-area-inset-top))]">
+      <main className={`flex-grow pt-[calc(72px+env(safe-area-inset-top))] ${showCustomerNav ? 'pb-20' : ''}`}>
         {children}
       </main>
-      {!isPartnerView && <VoiceAssistant />}
+
+      {showCustomerNav && <CustomerBottomNav />}
     </div>
   );
 };
@@ -413,7 +414,7 @@ const NotificationToast: React.FC<{ notifications: Notification[] }> = ({ notifi
   );
 };
 
-const App: React.FC = () => {
+const App = () => {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [notifications, setNotifications] = useState<Notification[]>([]);
