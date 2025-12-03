@@ -88,7 +88,7 @@ export const Routes = ({ children }: { children: React.ReactNode }) => {
    return <>{found}</>;
 };
 
-export const Route = (props: { path: string, element: React.ReactNode }) => null;
+export const Route = (props: { path: string, element: React.ReactNode; children?: React.ReactNode }) => null;
 /* --- End Custom Router --- */
 
 // --- Contexts ---
