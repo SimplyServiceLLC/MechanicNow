@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from '../App';
 import { CheckCircle, MapPin, ArrowRight, Shield, Zap, Clock, Wrench, Crosshair, Loader2 } from 'lucide-react';
 
 const AddressAutocomplete = ({ value, onChange, onSelect }: { value: string, onChange: (val: string) => void, onSelect?: (address: string) => void }) => {

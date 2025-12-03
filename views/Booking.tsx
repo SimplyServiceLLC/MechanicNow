@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { useNavigate, useLocation as useRouteLocation } from 'react-router-dom';
+import { useNavigate, useLocation as useRouteLocation } from '../App';
 import { useApp } from '../App';
 import { Search, MapPin, Calendar, Wrench, Car, ChevronRight, MessageSquare, Sparkles, ArrowLeft, Loader2, X, Clock, Mic, Stethoscope, Navigation, Fuel, Battery, Lock, Key, AlertTriangle, Droplet, CreditCard, Banknote, CheckCircle, Wallet, Star, ShieldCheck, Crosshair } from 'lucide-react';
 import { diagnoseCarIssue, chatWithMechanicAI } from '../services/geminiService';

@@ -1,6 +1,5 @@
-
 import React, { useEffect, useState, useRef } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from '../App';
 import { useApp } from '../App';
 import { BookingStatus, Mechanic, ServiceItem, Vehicle, GeoLocation } from '../types';
 import { Phone, MessageSquare, CheckCircle, MapPin, ArrowLeft, Wrench, Star, Navigation, Send, X, AlertTriangle, HelpCircle } from 'lucide-react';

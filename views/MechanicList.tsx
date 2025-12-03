@@ -1,7 +1,5 @@
-
-
 import React, { useState, useMemo, useEffect } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from '../App';
 import { Star, Clock, Award, ShieldCheck, ArrowLeft, MapPin as MapPinIcon, ChevronRight, CheckCircle, Zap, Calendar, Loader2, CreditCard, Banknote, X, Wrench, Wallet, Lock, FileText, Filter } from 'lucide-react';
 import { Vehicle, ServiceItem, Mechanic, JobRequest, PriceBreakdown, PaymentMethod, GeoLocation, ServiceType } from '../types';
 import { useApp } from '../App';

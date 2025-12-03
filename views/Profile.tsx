@@ -1,9 +1,7 @@
-
-
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../App';
 import { Car, Plus, Calendar, Wrench, User, Trash2, Mic, Cloud, Server, Wifi, Edit2, X, MapPin, Phone, Mail, Save, CreditCard } from 'lucide-react';
-import { Navigate, useNavigate } from 'react-router-dom';
+import { Navigate, useNavigate } from '../App';
 import { Vehicle, UserProfile } from '../types';
 import { api } from '../services/api';
 
@@ -53,7 +51,7 @@ export const Profile: React.FC = () => {
       }
   }, [user]);
 
-  if (!user) return <Navigate to="/login" />;
+  if (!user) return <Navigate to="/login" replace />;
 
   const handleAddVehicle = (e: React.FormEvent) => {
     e.preventDefault();

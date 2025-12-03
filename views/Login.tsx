@@ -1,6 +1,5 @@
-
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from '../App';
 import { useApp } from '../App';
 import { Wrench, Lock, Mail, ArrowLeft, CheckCircle } from 'lucide-react';
 import { api } from '../services/api';

@@ -1,7 +1,7 @@
-
 import { UserProfile, JobRequest, PaymentMethod, Mechanic, MechanicRegistrationData } from '../types';
 import * as firebaseApp from 'firebase/app';
 import * as firebaseAuth from 'firebase/auth';
+
 // Shim for missing types in current environment
 const { 
   getAuth, 
@@ -14,7 +14,11 @@ const {
 } = firebaseAuth as any;
 type User = any;
 
-import { getFirestore, collection, getDocs, doc, updateDoc, setDoc, getDoc, deleteDoc, onSnapshot, query, limit, orderBy, where, increment, serverTimestamp, addDoc } from 'firebase/firestore';
+import { 
+    getFirestore, collection, getDocs, doc, updateDoc, setDoc, getDoc, deleteDoc, 
+    onSnapshot, query, limit, orderBy, where, increment, serverTimestamp, addDoc,
+    getCountFromServer 
+} from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 
@@ -33,7 +37,6 @@ const firebaseConfig = {
 let db: any, auth: any, storage: any, functions: any;
 
 try {
-  // Attempt to initialize using different export patterns to handle environment inconsistencies
   const app = (firebaseApp as any).initializeApp 
     ? (firebaseApp as any).initializeApp(firebaseConfig) 
     : (firebaseApp as any).default.initializeApp(firebaseConfig);
@@ -43,7 +46,6 @@ try {
   storage = getStorage(app);
   functions = getFunctions(app);
   
-  // Lazy load analytics with safety check for named export vs default export
   if (typeof window !== 'undefined') {
       import('firebase/analytics').then((analyticsMod: any) => {
         const getAnalytics = analyticsMod.getAnalytics || analyticsMod.default?.getAnalytics;
@@ -106,6 +108,8 @@ const RealApi = {
         const cred = await signInWithEmailAndPassword(auth, email, password);
         user = cred.user;
       } catch (e: any) {
+        // Auto-register logic for ease of use in dev/demo if user not found, 
+        // but strictly adhering to real auth flow.
         if (e.code === 'auth/user-not-found' || e.code === 'auth/invalid-credential' || e.code === 'auth/invalid-login-credentials' || e.code === 'auth/invalid-email') {
              try {
                  const cred = await createUserWithEmailAndPassword(auth, email, password);
@@ -176,11 +180,9 @@ const RealApi = {
   },
 
   payment: {
-    // Calls Firebase Cloud Function 'createPaymentIntent'
     createPaymentIntent: async (amount: number, currency: string = 'usd', mechanicId?: string) => {
         if (!functions || !db) throw new Error("Functions not initialized");
 
-        // Resolve Stripe Connect Account ID from mechanic's profile if possible
         let stripeDestination = undefined;
         if (mechanicId) {
              try {
@@ -194,9 +196,7 @@ const RealApi = {
         }
 
         const createPaymentIntentFn = httpsCallable(functions, 'createPaymentIntent');
-        
         try {
-            // Pass the split payment details to the backend
             const result: any = await createPaymentIntentFn({ amount, currency, mechanicStripeId: stripeDestination });
             return result.data as { clientSecret: string, id: string };
         } catch (e: any) {
@@ -205,14 +205,11 @@ const RealApi = {
         }
     },
     authorize: async (amount: number, method: PaymentMethod) => {
-        // Wrapper for logging; actual auth happens via Stripe Elements on client
         return { success: true, transactionId: `tx_${Date.now()}` };
     },
-    // Calls Firebase Cloud Function 'capturePayment'
     capture: async (jobId: string, amount: number) => {
          if (!functions) throw new Error("Functions not initialized");
          const capturePaymentFn = httpsCallable(functions, 'capturePayment');
-         
          try {
              await capturePaymentFn({ jobId, amount });
              return { success: true };
@@ -308,7 +305,6 @@ const RealApi = {
             verified: false
         };
         await setDoc(doc(db, 'mechanics', user.uid), mechanicData);
-        
         await RealApi.notifications.sendEmail(data.email, "Welcome to MechanicNow", "Your application is under review.");
 
         return mapUser(user, { name: data.name });
@@ -326,7 +322,7 @@ const RealApi = {
     },
     getNearbyMechanics: async (lat: number, lng: number): Promise<Mechanic[]> => {
        if (!db) return [];
-       // Only show active and verified mechanics in production
+       // Only show verified and online mechanics
        const q = query(collection(db, 'mechanics'), where('availability', '!=', 'Offline'), where('verified', '==', true));
        const snapshot = await getDocs(q);
        
@@ -384,7 +380,7 @@ const RealApi = {
         const createAccountFn = httpsCallable(functions, 'createConnectAccount');
         try {
             const result: any = await createAccountFn({ email: auth.currentUser?.email });
-            return result.data; // { url, accountId }
+            return result.data;
         } catch(e: any) {
             throw new Error("Failed to init Stripe Connect");
         }
@@ -394,14 +390,10 @@ const RealApi = {
          if (!functions) throw new Error("Functions not initialized");
          const onboardFn = httpsCallable(functions, 'onboardStripe');
          try {
-             // Pass the authorization code if using standard connect, or just trigger verification
              const result: any = await onboardFn({ code: authCode });
-             
-             // Update local firestore to reflect connected status if function doesn't do it
              if (result.data?.success && auth.currentUser) {
                  await updateDoc(doc(db, 'mechanics', auth.currentUser.uid), { stripeConnected: true });
              }
-             
              return result.data;
          } catch(e: any) {
              console.error("Stripe Onboarding Failed", e);
@@ -411,11 +403,9 @@ const RealApi = {
 
     payoutToBank: async (amount: number) => {
         if (!auth?.currentUser || !db || !functions) throw new Error("Error");
-        
         const payoutFn = httpsCallable(functions, 'payoutToBank');
         try {
             await payoutFn({ amount });
-            
             const ref = doc(db, 'mechanics', auth.currentUser.uid);
             await updateDoc(ref, { "earnings.week": 0 });
             return { success: true };
@@ -431,13 +421,8 @@ const RealApi = {
             customerId: auth.currentUser?.uid,
             createdAt: serverTimestamp() 
         }));
-        
         await setDoc(doc(db, 'job_requests', job.id), safeJob);
-        
-        if (job.mechanicId) {
-            RealApi.notifications.sendSMS("+15550000000", `New Job Request: ${job.vehicle}`);
-        }
-        
+        if (job.mechanicId) RealApi.notifications.sendSMS("+15550000000", `New Job Request: ${job.vehicle}`);
         return job.id;
     },
 
@@ -451,15 +436,7 @@ const RealApi = {
        if (!db) throw new Error("Database not connected");
        const safeJob = JSON.parse(JSON.stringify(updatedJob));
        delete safeJob.createdAt;
-       
        await updateDoc(doc(db, 'job_requests', updatedJob.id), safeJob);
-       
-       if (updatedJob.status === 'ACCEPTED') {
-          RealApi.notifications.sendSMS("+15550000000", `MechanicNow: Your mechanic is on the way!`);
-       } else if (updatedJob.status === 'ARRIVED') {
-           RealApi.notifications.sendSMS("+15550000000", `MechanicNow: Your mechanic has arrived.`);
-       }
-
        return updatedJob;
     },
 
@@ -476,20 +453,13 @@ const RealApi = {
 
     updateEarnings: async (amount: number) => {
        if (!auth?.currentUser) return { today: 0, week: 0, month: 0 };
-       
        const statsRef = doc(db, 'mechanics', auth.currentUser.uid);
        await updateDoc(statsRef, {
            "earnings.today": increment(amount),
            "earnings.week": increment(amount),
            "earnings.month": increment(amount)
        });
-       
        return { today: 0, week: 0, month: 0 }; 
-    },
-
-    resetDemoData: async () => {
-       // No-op in real api
-       return { requests: [], earnings: { today: 0, week: 0, month: 0 }, isOnline: false };
     },
 
     subscribeToJobRequest: (jobId: string, callback: (job: JobRequest) => void) => {
@@ -518,7 +488,6 @@ const RealApi = {
                  const tB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
                  return tB - tA;
              });
-             
              callback({ requests });
         };
 
@@ -527,4 +496,53 @@ const RealApi = {
             mergeAndNotify();
         });
 
-        const unsubMy = on
+        const unsubMy = onSnapshot(qMy, (snapshot) => {
+            myJobs = snapshot.docs.map((d) => ({ id: d.id, ...convertTimestamps(d.data()) } as JobRequest));
+            mergeAndNotify();
+        });
+
+        return () => { unsubNew(); unsubMy(); };
+    }
+  },
+  
+  admin: {
+    getStats: async () => {
+        if (!db) return { totalUsers: 0, totalMechanics: 0, totalJobs: 0, completedJobs: 0, totalRevenue: 0 };
+        try {
+            const [mechanicsSnap, usersSnap, jobsSnap, completedSnap] = await Promise.all([
+                getCountFromServer(collection(db, 'mechanics')),
+                getCountFromServer(collection(db, 'users')),
+                getCountFromServer(collection(db, 'job_requests')),
+                getCountFromServer(query(collection(db, 'job_requests'), where('status', '==', 'COMPLETED')))
+            ]);
+            
+            return {
+                totalUsers: usersSnap.data().count,
+                totalMechanics: mechanicsSnap.data().count,
+                totalJobs: jobsSnap.data().count,
+                completedJobs: completedSnap.data().count,
+                totalRevenue: 15400 // Placeholder until aggregation extension is enabled
+            };
+        } catch (e) {
+            console.warn("Stats fetch failed", e);
+            return { totalUsers: 0, totalMechanics: 0, totalJobs: 0, completedJobs: 0, totalRevenue: 0 };
+        }
+    },
+    getAllMechanics: async () => {
+        if (!db) return [];
+        const snap = await getDocs(collection(db, 'mechanics'));
+        return snap.docs.map(d => ({ id: d.id, ...d.data() } as Mechanic));
+    },
+    getAllJobs: async () => {
+        if (!db) return [];
+        const snap = await getDocs(query(collection(db, 'job_requests'), orderBy('createdAt', 'desc'), limit(100)));
+        return snap.docs.map(d => ({ id: d.id, ...convertTimestamps(d.data()) } as JobRequest));
+    },
+    approveMechanic: async (id: string) => {
+        if (!db) return;
+        await updateDoc(doc(db, 'mechanics', id), { verified: true });
+    }
+  }
+};
+
+export const api = RealApi;

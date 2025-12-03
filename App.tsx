@@ -1,6 +1,4 @@
-
 import React, { useState, createContext, useContext, useEffect } from 'react';
-import { HashRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { Wrench, Menu, X, Bell, Mic, Loader2, AlertTriangle, ShieldCheck, User, Calendar, MapPin, Briefcase, LayoutDashboard } from 'lucide-react';
 import { Home } from './views/Home';
 import { Booking } from './views/Booking';
@@ -14,6 +12,84 @@ import { AdminDashboard } from './views/AdminDashboard';
 import { Terms } from './views/Terms';
 import { UserProfile, Vehicle, ServiceRecord } from './types';
 import { api } from './services/api';
+
+/* --- Custom Router Implementation (replacing react-router-dom) --- */
+const RouterContext = createContext<{ path: string; search: string; navigate: (path: string, options?: any) => void; state: any } | null>(null);
+
+export const HashRouter = ({ children }: { children: React.ReactNode }) => {
+  const [path, setPath] = useState(window.location.hash.slice(1) || '/');
+  const [state, setState] = useState<any>(null);
+
+  useEffect(() => {
+    const handler = () => {
+        const hash = window.location.hash.slice(1) || '/';
+        setPath(hash);
+    };
+    window.addEventListener('hashchange', handler);
+    return () => window.removeEventListener('hashchange', handler);
+  }, []);
+
+  const navigate = (to: string, options?: { state?: any, replace?: boolean }) => {
+    if (options?.state) setState(options.state);
+    if (options?.replace) {
+        window.location.replace('#' + to);
+    } else {
+        window.location.hash = to;
+    }
+  };
+
+  const [pathname, search] = path.split('?');
+
+  return (
+    <RouterContext.Provider value={{ path: pathname || '/', search: search ? '?' + search : '', navigate, state }}>
+      {children}
+    </RouterContext.Provider>
+  );
+};
+
+export function useLocation() {
+  const ctx = useContext(RouterContext);
+  if (!ctx) return { pathname: '/', search: '', state: null };
+  return { pathname: ctx.path, search: ctx.search, state: ctx.state };
+}
+
+export function useNavigate() {
+  const ctx = useContext(RouterContext);
+  return (to: string | number, options?: any) => {
+      if (!ctx) return;
+      if (typeof to === 'number') {
+          window.history.go(to);
+      } else {
+          ctx.navigate(to, options);
+      }
+  };
+}
+
+export const Navigate = ({ to, replace }: { to: string, replace?: boolean }) => {
+    const navigate = useNavigate();
+    useEffect(() => {
+        navigate(to, { replace });
+    }, []);
+    return null;
+};
+
+export const Routes = ({ children }: { children: React.ReactNode }) => {
+   const location = useLocation();
+   let found: React.ReactNode = null;
+   
+   React.Children.forEach(children, (child) => {
+       if (found) return;
+       if (!React.isValidElement(child)) return;
+       const { path, element } = child.props as any;
+       if (path === '*' || path === location.pathname) {
+           found = element;
+       }
+   });
+   return <>{found}</>;
+};
+
+export const Route = (props: { path: string, element: React.ReactNode }) => null;
+/* --- End Custom Router --- */
 
 // --- Contexts ---
 
@@ -57,7 +133,6 @@ interface ErrorBoundaryState {
 
 class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
   public state: ErrorBoundaryState = { hasError: false, error: null };
-  // Explicitly declare props to avoid TS error "Property 'props' does not exist on type 'ErrorBoundary'"
   public props: ErrorBoundaryProps;
 
   constructor(props: ErrorBoundaryProps) {

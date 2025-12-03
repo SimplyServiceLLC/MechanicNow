@@ -1,8 +1,7 @@
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useApp } from '../App';
 import { MapPin, DollarSign, Clock, User, ArrowRight, Shield, Settings, Power, Navigation, Phone, Bell, MessageSquare, X, Send, CheckCircle, PenTool, Sparkles, Loader2, FileText, Wrench, Mic, TrendingUp, RefreshCw, Calendar, ChevronRight, Timer, RotateCcw, Package, Wallet, CreditCard, Banknote, Smartphone, Filter, Map as MapIcon, Link2, Save, ClipboardList, Lock } from 'lucide-react';
-import { useNavigate, Navigate } from 'react-router-dom';
+import { useNavigate, Navigate } from '../App';
 import { JobRequest, JobCompletionDetails, AiDiagnosisResult, MechanicSchedule } from '../types';
 import { diagnoseCarIssue } from '../services/geminiService';
 import { api } from '../services/api';
@@ -400,692 +399,464 @@ const CompletionModal = ({ job, onClose, onComplete }: { job: JobRequest, onClos
                         className={`w-full p-4 rounded-xl border-2 flex items-center justify-between transition-all ${paymentMethod === 'CARD' ? 'border-blue-600 bg-blue-50' : 'border-slate-200 hover:bg-gray-50'}`}
                     >
                         <div className="flex items-center gap-3">
-                            <CreditCard className={paymentMethod === 'CARD' ? 'text-blue-600' : 'text-slate-400'} />
+                            <CreditCard className={paymentMethod === 'CARD' ? 'text-blue-600' : 'text-slate-400'} size={24} />
                             <div className="text-left">
-                                <p className={`font-bold ${paymentMethod === 'CARD' ? 'text-blue-900' : 'text-slate-700'}`}>App Payment</p>
-                                <p className="text-xs text-slate-500">Customer's card on file (Stripe)</p>
+                                <p className={`font-bold text-sm ${paymentMethod === 'CARD' ? 'text-blue-900' : 'text-slate-700'}`}>Card Payment (Stripe)</p>
+                                <p className="text-xs text-slate-500">Secure online processing</p>
                             </div>
                         </div>
-                        {paymentMethod === 'CARD' && <CheckCircle className="text-blue-600" size={20}/>}
+                        {paymentMethod === 'CARD' && <CheckCircle size={20} className="text-blue-600"/>}
                     </button>
 
                     <button 
                         onClick={() => setPaymentMethod('CASH')}
                         className={`w-full p-4 rounded-xl border-2 flex items-center justify-between transition-all ${paymentMethod === 'CASH' ? 'border-green-600 bg-green-50' : 'border-slate-200 hover:bg-gray-50'}`}
                     >
-                        <div className="flex items-center gap-3">
-                            <Banknote className={paymentMethod === 'CASH' ? 'text-green-600' : 'text-slate-400'} />
+                         <div className="flex items-center gap-3">
+                            <Banknote className={paymentMethod === 'CASH' ? 'text-green-600' : 'text-slate-400'} size={24} />
                             <div className="text-left">
-                                <p className={`font-bold ${paymentMethod === 'CASH' ? 'text-green-900' : 'text-slate-700'}`}>Cash / External</p>
-                                <p className="text-xs text-slate-500">You collected cash/Venmo directly</p>
+                                <p className={`font-bold text-sm ${paymentMethod === 'CASH' ? 'text-green-900' : 'text-slate-700'}`}>Cash / External</p>
+                                <p className="text-xs text-slate-500">Cash, Zelle, Venmo</p>
                             </div>
                         </div>
-                        {paymentMethod === 'CASH' && <CheckCircle className="text-green-600" size={20}/>}
+                        {paymentMethod === 'CASH' && <CheckCircle size={20} className="text-green-600"/>}
                     </button>
                 </div>
 
                 <button 
-                    onClick={() => onComplete(details, paymentMethod)}
-                    className="w-full bg-green-600 text-white py-4 rounded-xl font-bold hover:bg-green-500 shadow-lg shadow-green-200 transition-all"
+                    onClick={() => onComplete(details, paymentMethod)} 
+                    className="w-full bg-green-600 text-white py-4 rounded-xl font-bold hover:bg-green-500 shadow-lg shadow-green-200"
                 >
-                    {paymentMethod === 'CARD' ? `Charge Card $${total.toFixed(2)}` : 'Confirm Payment Collected'}
+                    Confirm & Finish Job
                 </button>
-                {paymentMethod === 'CASH' && (
-                    <p className="text-xs text-center text-slate-400 mt-3">
-                        * Platform fee will be deducted from your wallet balance.
-                    </p>
-                )}
             </div>
         </div>
     );
 };
 
-// --- MAIN COMPONENT ---
-
 export const MechanicDashboard: React.FC = () => {
   const { user, notify, isLoading: appLoading } = useApp();
   const navigate = useNavigate();
-
-  const [isLoading, setIsLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'requests' | 'earnings' | 'profile' | 'map' | 'history'>('requests');
-  const [filterStatus, setFilterStatus] = useState<'ALL' | 'NEW' | 'ACTIVE' | 'COMPLETED'>('ALL');
+  const [activeTab, setActiveTab] = useState<'requests' | 'map' | 'earnings' | 'history' | 'profile'>('requests');
   const [isOnline, setIsOnline] = useState(false);
-  const [isStripeConnected, setIsStripeConnected] = useState(false);
   const [requests, setRequests] = useState<JobRequest[]>([]);
-  const [earningsStats, setEarningsStats] = useState({ today: 0, week: 0, month: 0 });
-  const [mechanicLocation, setMechanicLocation] = useState<{lat: number, lng: number} | null>(null);
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
   
-  // Mechanic Profile Edit State
-  const [profileBio, setProfileBio] = useState('');
-  const [profileExp, setProfileExp] = useState(1);
-  const [schedule, setSchedule] = useState<MechanicSchedule>({
-      monday: { start: '09:00', end: '17:00', active: true },
-      tuesday: { start: '09:00', end: '17:00', active: true },
-      wednesday: { start: '09:00', end: '17:00', active: true },
-      thursday: { start: '09:00', end: '17:00', active: true },
-      friday: { start: '09:00', end: '17:00', active: true },
-      saturday: { start: '10:00', end: '14:00', active: true },
-      sunday: { start: '09:00', end: '17:00', active: false },
+  // Dashboard Stats
+  const [stats, setStats] = useState({ 
+      earnings: { today: 0, week: 0, month: 0 },
+      isOnline: false,
+      stripeConnected: false
   });
 
-  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
-  const [chatJob, setChatJob] = useState<JobRequest | null>(null);
-  const [showCompletionModal, setShowCompletionModal] = useState(false);
-  const [navPromptJob, setNavPromptJob] = useState<JobRequest | null>(null);
-  const [isCashOutProcessing, setIsCashOutProcessing] = useState(false);
-  const [isOnboardingStripe, setIsOnboardingStripe] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [location, setLocation] = useState<{lat: number, lng: number} | null>(null);
+
+  // Modals
+  const [showChat, setShowChat] = useState(false);
+  const [showComplete, setShowComplete] = useState(false);
   
-  const prevRequestsRef = useRef<JobRequest[]>([]);
-
-  // Get Mechanic Location on mount with high accuracy for background prep
+  // Handle Stripe OAuth Return
   useEffect(() => {
-    if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-            (pos) => setMechanicLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-            (err) => console.log("Location access denied", err),
-            { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
-        );
+    const urlParams = new URLSearchParams(window.location.search);
+    const code = urlParams.get('code');
+    const state = urlParams.get('state');
+
+    // If we have a code and we were expecting a stripe return (simple check via localStorage or just presence of code)
+    if (code) {
+         // Clear the query param to avoid re-trigger
+         window.history.replaceState({}, document.title, window.location.pathname);
+         notify('Processing', 'Linking Stripe Account...');
+         
+         api.mechanic.onboardStripe(code)
+            .then(() => {
+                notify('Success', 'Stripe account connected!');
+                setStats(prev => ({ ...prev, stripeConnected: true }));
+            })
+            .catch(err => {
+                notify('Error', 'Failed to link Stripe account.');
+            });
     }
   }, []);
 
   useEffect(() => {
-    if (!user) return;
-    const initDashboard = async () => {
-        try {
-            const data = await api.mechanic.getDashboardData();
-            setRequests(data.requests);
-            setEarningsStats(data.earnings);
-            setIsOnline(data.isOnline);
-            setIsStripeConnected(!!data.stripeConnected);
-            prevRequestsRef.current = data.requests;
-            
-            // Init profile data if available
-            // For now assuming user context or separate fetch, simplified here:
-            if (user.isMechanic) {
-                // mock prefill
-                setProfileExp(5);
-            }
-        } catch (e) {
-            notify('Error', 'Failed to load dashboard.');
-        } finally {
-            setIsLoading(false);
-        }
-    };
-    initDashboard();
-    const unsubscribe = api.mechanic.subscribeToDashboard((data) => {
-        if (data?.requests) setRequests(data.requests);
-        if (data?.earnings) setEarningsStats(data.earnings); // Real-time update via subscription
-        if (data?.stripeConnected !== undefined) setIsStripeConnected(data.stripeConnected);
-    });
-    return () => unsubscribe();
-  }, [user, navigate]);
-
-  // Check for Stripe Connect Return
-  useEffect(() => {
-    const checkStripe = async () => {
-        // If we are waiting for stripe AND we have a code or we are simply returning
-        if (localStorage.getItem('mn_awaiting_stripe') === 'true') {
-            localStorage.removeItem('mn_awaiting_stripe');
-            setIsOnboardingStripe(true);
-            try {
-                // Parse code from URL search params (Standard Connect)
-                // Express accounts typically return without code but trigger an update
-                const params = new URLSearchParams(window.location.search);
-                const code = params.get('code') || '';
-                
-                await api.mechanic.onboardStripe(code);
-                
-                setIsStripeConnected(true);
-                notify("Success", "Stripe Account Verified!");
-                
-                // Clean URL
-                window.history.replaceState({}, document.title, window.location.pathname);
-            } catch(e) {
-                notify("Note", "Stripe verification incomplete or cancelled.");
-            } finally {
-                setIsOnboardingStripe(false);
-            }
-        }
-    };
-    checkStripe();
-  }, []);
-
-  // Monitor for New Jobs and Send Notifications
-  useEffect(() => {
-      if (isLoading) return;
-
-      const previousIds = new Set(prevRequestsRef.current.map(r => r.id));
-      const newJobs = requests.filter(r => r.status === 'NEW' && !previousIds.has(r.id));
-
-      if (newJobs.length > 0 && isOnline) {
-          notify("New Job Alert", `${newJobs.length} new job(s) available nearby.`);
-          
-          // Try browser notification
-          if ('Notification' in window && Notification.permission === 'granted') {
-             new Notification('MechanicNow', { 
-                 body: `New Job: ${newJobs[0].vehicle} - ${newJobs[0].issue}`,
-                 icon: '/vite.svg'
-             });
-          } else if ('Notification' in window && Notification.permission !== 'denied') {
-              Notification.requestPermission();
-          }
-      }
-      
-      prevRequestsRef.current = requests;
-  }, [requests, isLoading, isOnline, notify]);
-
-  const activeJob = requests.find(r => r.id === selectedJobId);
-
-  // GPS Broadcaster: Whenever an active job is in progress or en-route, track position
-  useEffect(() => {
-    let watchId: number | null = null;
-
-    if (activeJob && (activeJob.status === 'ACCEPTED' || activeJob.status === 'ARRIVED' || activeJob.status === 'IN_PROGRESS')) {
+    if (user?.isMechanic) {
+        initDashboard();
+        
+        // Start Location Tracking
         if (navigator.geolocation) {
-            watchId = navigator.geolocation.watchPosition(
+            const watchId = navigator.geolocation.watchPosition(
                 (pos) => {
-                    const newLoc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-                    setMechanicLocation(newLoc);
-                    // Update location in DB for tracking
-                    api.mechanic.updateLocation(activeJob.id, pos.coords.latitude, pos.coords.longitude);
+                    setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+                    // If online and on active job, update server
+                    if (activeJobId && isOnline) {
+                         api.mechanic.updateLocation(activeJobId, pos.coords.latitude, pos.coords.longitude);
+                    }
                 },
-                (err) => console.error(err),
-                { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
+                (err) => console.warn(err),
+                { enableHighAccuracy: true }
             );
+            return () => navigator.geolocation.clearWatch(watchId);
         }
     }
+  }, [user, activeJobId, isOnline]);
 
-    return () => {
-        if (watchId !== null) navigator.geolocation.clearWatch(watchId);
-    };
-  }, [activeJob?.id, activeJob?.status]);
+  const initDashboard = async () => {
+      try {
+          const data = await api.mechanic.getDashboardData();
+          setRequests(data.requests);
+          setStats({
+              earnings: data.earnings,
+              isOnline: data.isOnline,
+              stripeConnected: data.stripeConnected
+          });
+          setIsOnline(data.isOnline);
+      } catch (e) {
+          console.error(e);
+      } finally {
+          setIsLoading(false);
+      }
 
-  const completedJobs = useMemo(() => {
-    return requests.filter(r => r.status === 'COMPLETED').reverse();
-  }, [requests]);
+      const unsubscribe = api.mechanic.subscribeToDashboard((data) => {
+          setRequests(data.requests);
+      });
+      return unsubscribe;
+  };
 
-  if (!appLoading && !user) return <Navigate to="/login" replace />;
-
-  const handleToggleOnline = async () => {
+  const toggleOnline = async () => {
       const newState = !isOnline;
       setIsOnline(newState);
       await api.mechanic.updateStatus(newState);
-      if (newState) {
-          notify("You are Online", "Waiting for job requests...");
-      } else {
-          notify("You are Offline", "You will not receive new job requests.");
+      notify(newState ? "You're Online" : "You're Offline", newState ? "Receiving job requests." : "Hidden from search.");
+  };
+
+  const handleJobAction = async (job: JobRequest, action: 'ACCEPT' | 'DECLINE' | 'ARRIVE' | 'START') => {
+      let status: any = job.status;
+      if (action === 'ACCEPT') status = 'ACCEPTED';
+      if (action === 'DECLINE') {
+          // In real app, maybe hide for this mechanic or re-assign
+          // For now, delete/hide
+          await api.mechanic.deleteJobRequest(job.id);
+          return;
       }
-  };
-  
-  const handleSaveProfile = () => {
-      // In real app, we would save schedule too
-      notify("Profile Saved", "Your mechanic profile and schedule have been updated.");
-      // api.mechanic.updateProfile({ bio: profileBio, yearsExperience: profileExp, schedule });
+      if (action === 'ARRIVE') status = 'ARRIVED';
+      if (action === 'START') status = 'IN_PROGRESS';
+
+      await api.mechanic.updateJobRequest({ ...job, status, mechanicId: user!.id });
+      if (action === 'ACCEPT') setActiveJobId(job.id);
   };
 
-  const handleAcceptJob = async (id: string, e?: React.MouseEvent) => {
-      if (e) e.stopPropagation();
-      const job = requests.find(r => r.id === id);
-      if (job) setNavPromptJob(job);
-  };
-
-  const handleConfirmNavigation = async (startNav: boolean) => {
-    if (!navPromptJob || !user) return;
-    const updatedJob: JobRequest = { ...navPromptJob, status: 'ACCEPTED', mechanicId: user.id };
-    
-    setRequests(prev => prev.map(r => r.id === navPromptJob.id ? updatedJob : r));
-    setNavPromptJob(null);
-    
-    if (startNav && updatedJob.location) {
-        window.open(`https://www.google.com/maps/search/?api=1&query=${updatedJob.location.lat},${updatedJob.location.lng}`, '_blank');
-    }
-    await api.mechanic.updateJobRequest(updatedJob);
-    
-    notify("Job Accepted", "Customer has been notified that you are en route.");
-  };
-
-  const handleStatusUpdate = async (id: string, newStatus: JobRequest['status']) => {
-      const job = requests.find(r => r.id === id);
+  const handleCompleteJob = async (details: JobCompletionDetails, method: 'CARD'|'CASH'|'EXTERNAL') => {
+      if (!activeJobId) return;
+      const job = requests.find(r => r.id === activeJobId);
       if (!job) return;
-      const updatedJob = { ...job, status: newStatus };
-      setRequests(prev => prev.map(r => r.id === id ? updatedJob : r));
-      await api.mechanic.updateJobRequest(updatedJob);
-      
-      if (newStatus === 'ARRIVED') {
-          notify("Status Updated", "Customer notified of arrival.");
+
+      try {
+          // If Card, we need to capture payment via API
+          if (method === 'CARD' && job.paymentIntentId) {
+             await api.payment.capture(job.id, (job.payout + (details.partsCost || 0)) * 1.25); // Capture total + fee
+          }
+
+          // Update Job
+          await api.mechanic.updateJobRequest({
+              ...job,
+              status: 'COMPLETED',
+              completionDetails: { ...details, collectedPaymentMethod: method },
+              paymentStatus: method === 'CARD' ? 'CAPTURED' : 'PENDING'
+          });
+
+          // Update Earnings (Simple logic: labor + parts - fee)
+          // In reality, parts might be reimbursed differently. Assuming Mechanic gets Parts Cost back 100% + Labor Share
+          const payout = job.payout; // Net payout from breakdown
+          await api.mechanic.updateEarnings(payout);
+
+          // Update local stats
+          setStats(prev => ({
+              ...prev,
+              earnings: {
+                  ...prev.earnings,
+                  today: prev.earnings.today + payout,
+                  week: prev.earnings.week + payout,
+                  month: prev.earnings.month + payout
+              }
+          }));
+
+          setActiveJobId(null);
+          setShowComplete(false);
+          notify("Job Completed", `You earned $${payout.toFixed(2)}`);
+      } catch (e) {
+          notify("Error", "Failed to complete job. Please try again.");
       }
   };
 
-  const handleCompleteJobClick = (id: string) => {
-      setSelectedJobId(id);
-      setShowCompletionModal(true);
+  const handleStripeConnect = async () => {
+      try {
+          const res = await api.mechanic.createStripeConnectAccount();
+          if (res.url) window.location.href = res.url;
+      } catch(e) {
+          notify("Error", "Could not initiate Stripe Connect.");
+      }
   };
 
   const handleCashOut = async () => {
-    setIsCashOutProcessing(true);
-    try {
-        await api.mechanic.payoutToBank(earningsStats.week);
-        notify("Payout Initiated", `$${earningsStats.week.toFixed(2)} is on its way to your bank.`);
-    } catch(e) {
-        notify("Error", "Payout failed. Please try again.");
-    } finally {
-        setIsCashOutProcessing(false);
-    }
-  };
-  
-  const handleStripeConnect = async () => {
-      setIsOnboardingStripe(true);
       try {
-          // 1. Get OAuth Link
-          const { url } = await api.mechanic.createStripeConnectAccount();
-          
-          // 2. Set flag and Redirect to Stripe Express
-          localStorage.setItem('mn_awaiting_stripe', 'true');
-          window.location.href = url;
-
+          if (stats.earnings.week <= 0) return;
+          await api.mechanic.payoutToBank(stats.earnings.week);
+          notify("Success", "Payout initiated to your bank.");
+          setStats(prev => ({ ...prev, earnings: { ...prev.earnings, week: 0 } }));
       } catch(e) {
-          notify("Error", "Failed to connect Stripe.");
-          setIsOnboardingStripe(false);
+          notify("Error", "Payout failed.");
       }
   };
 
-  const handleProcessPayment = async (details: JobCompletionDetails, paymentMethod: 'CARD' | 'CASH' | 'EXTERNAL') => {
-      if (!selectedJobId) return;
-      const job = requests.find(r => r.id === selectedJobId);
-      if (!job) return;
+  if (!appLoading && (!user || !user.isMechanic)) return <Navigate to="/" replace />;
+  if (isLoading) return <div className="min-h-screen flex items-center justify-center bg-slate-900 text-white"><Loader2 className="animate-spin mr-2"/> Loading Dashboard...</div>;
 
-      // Calculate Financials
-      const baseLabor = job.payout;
-      const partsCost = details.partsCost || 0;
-      const customerTotal = baseLabor + partsCost;
-      const platformFee = baseLabor * 0.20;
-      const mechanicNet = customerTotal - platformFee;
-      
-      const updatedJob: JobRequest = { 
-          ...job, 
-          status: 'COMPLETED' as const, 
-          completionDetails: details,
-          paymentStatus: paymentMethod === 'CARD' ? 'CAPTURED' : 'PENDING',
-          priceBreakdown: {
-              subtotal: baseLabor,
-              tax: 0,
-              total: customerTotal,
-              platformFee: platformFee,
-              mechanicPayout: mechanicNet
-          }
-      };
-      
-      // Simulate Processing Delay
-      await new Promise(r => setTimeout(r, 1500));
-      
-      if (paymentMethod === 'CARD') {
-         await api.payment.capture(job.id, customerTotal);
-      } 
+  const activeJob = requests.find(r => r.id === activeJobId) || requests.find(r => ['ACCEPTED', 'ARRIVED', 'IN_PROGRESS'].includes(r.status) && r.mechanicId === user?.id);
+  // Sync active job ID if found in list
+  if (activeJob && activeJob.id !== activeJobId) setActiveJobId(activeJob.id);
 
-      setRequests(prev => prev.map(r => r.id === selectedJobId ? updatedJob : r));
-      
-      await api.mechanic.updateJobRequest(updatedJob);
-      await api.mechanic.updateEarnings(mechanicNet);
-      
-      setShowCompletionModal(false);
-      notify("Job Completed", `You earned $${mechanicNet.toFixed(2)}!`);
-  };
-
-  const handleCloseCompletionModal = () => {
-      setShowCompletionModal(false);
-      setSelectedJobId(null);
-  };
-
-  const visibleRequests = useMemo(() => {
-      return requests.filter(r => {
-        switch (filterStatus) {
-            case 'NEW': return r.status === 'NEW';
-            case 'ACTIVE': return ['ACCEPTED', 'ARRIVED', 'IN_PROGRESS'].includes(r.status);
-            case 'COMPLETED': return r.status === 'COMPLETED';
-            default: return true;
-        }
-      });
-  }, [requests, filterStatus]);
+  const completedJobs = requests.filter(r => r.status === 'COMPLETED' && r.mechanicId === user?.id);
 
   return (
-    <div className="flex h-screen bg-slate-50 overflow-hidden pt-[calc(5rem+env(safe-area-inset-top))]">
-        <div className="w-20 md:w-64 bg-white border-r border-slate-200 flex flex-col justify-between flex-shrink-0 transition-all duration-300 pb-[env(safe-area-inset-bottom)]">
-            <div className="p-4 space-y-2">
-                <button onClick={() => setActiveTab('requests')} className={`w-full p-3 rounded-xl flex items-center gap-3 ${activeTab === 'requests' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-gray-50'}`}>
-                    <Wrench size={24} /><span className="hidden md:block font-medium">Jobs</span>
-                </button>
-                <button onClick={() => setActiveTab('map')} className={`w-full p-3 rounded-xl flex items-center gap-3 ${activeTab === 'map' ? 'bg-purple-50 text-purple-600' : 'text-slate-500 hover:bg-gray-50'}`}>
-                    <MapIcon size={24} /><span className="hidden md:block font-medium">Map View</span>
-                </button>
-                <button onClick={() => setActiveTab('earnings')} className={`w-full p-3 rounded-xl flex items-center gap-3 ${activeTab === 'earnings' ? 'bg-green-50 text-green-600' : 'text-slate-500 hover:bg-gray-50'}`}>
-                    <DollarSign size={24} /><span className="hidden md:block font-medium">Earnings</span>
-                </button>
-                <button onClick={() => setActiveTab('history')} className={`w-full p-3 rounded-xl flex items-center gap-3 ${activeTab === 'history' ? 'bg-amber-50 text-amber-600' : 'text-slate-500 hover:bg-gray-50'}`}>
-                    <ClipboardList size={24} /><span className="hidden md:block font-medium">History</span>
-                </button>
-                <button onClick={() => setActiveTab('profile')} className={`w-full p-3 rounded-xl flex items-center gap-3 ${activeTab === 'profile' ? 'bg-slate-100 text-slate-800' : 'text-slate-500 hover:bg-gray-50'}`}>
-                    <User size={24} /><span className="hidden md:block font-medium">Profile</span>
-                </button>
+    <div className="flex flex-col h-screen bg-slate-100 overflow-hidden pt-[calc(3.5rem+env(safe-area-inset-top))]">
+        {/* Top Status Bar */}
+        <div className="bg-white px-4 py-3 border-b border-gray-200 flex justify-between items-center shadow-sm z-20">
+            <div className="flex items-center gap-3">
+                <div className={`w-3 h-3 rounded-full ${isOnline ? 'bg-green-500 animate-pulse' : 'bg-slate-400'}`}></div>
+                <div>
+                   <h1 className="font-bold text-slate-800 leading-none">Partner Dashboard</h1>
+                   <p className="text-xs text-slate-500 mt-0.5">{isOnline ? 'Online - Receiving Jobs' : 'Offline'}</p>
+                </div>
             </div>
-            <div className="p-4 border-t border-slate-100 mt-auto">
-                 <div className="hidden md:block bg-slate-900 rounded-xl p-4 mb-4 shadow-lg">
-                   <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-1">Today's Payout</p>
-                   <div className="flex items-center justify-between">
-                       <p className="text-2xl font-bold text-green-400">${earningsStats.today.toFixed(0)}</p>
-                       <TrendingUp className="text-green-400" size={20} />
-                   </div>
-                 </div>
-                 <button onClick={handleToggleOnline} className={`w-full p-4 rounded-xl flex items-center justify-center gap-3 font-bold text-white shadow-lg ${isOnline ? 'bg-green-500' : 'bg-slate-800'}`}>
-                    <Power size={20} /><span className="hidden md:block">{isOnline ? 'Online' : 'Go Online'}</span>
-                </button>
-            </div>
+            <button 
+                onClick={toggleOnline}
+                className={`p-2 rounded-full font-bold transition-all ${isOnline ? 'bg-green-100 text-green-700 px-4' : 'bg-slate-100 text-slate-600 px-4'}`}
+            >
+                {isOnline ? 'GO OFFLINE' : 'GO ONLINE'}
+            </button>
         </div>
 
-        <div className="flex-1 flex flex-col overflow-hidden relative">
-            {activeTab === 'requests' && (
-                <div className="flex-1 flex flex-col md:flex-row h-full">
-                    {/* List Container - Full width on mobile, fixed width on desktop */}
-                    <div className="w-full md:w-96 bg-white border-r border-slate-200 flex flex-col z-10 shadow-xl md:shadow-none h-full">
-                        <div className="p-6 border-b border-slate-100 bg-white">
-                            <h2 className="text-2xl font-bold text-slate-900 mb-4">Job Requests</h2>
-                            <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
-                                {['ALL', 'NEW', 'ACTIVE', 'COMPLETED'].map(status => (
-                                    <button
-                                        key={status}
-                                        onClick={() => setFilterStatus(status as any)}
-                                        className={`px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-colors ${
-                                            filterStatus === status 
-                                            ? 'bg-slate-900 text-white' 
-                                            : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-                                        }`}
-                                    >
-                                        {status === 'COMPLETED' ? 'DONE' : status}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-                        <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50 pb-[env(safe-area-inset-bottom)]">
-                            {visibleRequests.length === 0 && (
-                                <div className="text-center py-8 text-slate-400">
-                                    <p className="text-sm">No jobs found.</p>
-                                </div>
-                            )}
-                            {visibleRequests.map(req => (
-                                <div 
-                                    key={req.id} 
-                                    onClick={() => setSelectedJobId(req.id)}
-                                    className={`p-4 rounded-2xl border cursor-pointer transition-all ${selectedJobId === req.id ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-100 hover:border-blue-300'}`}
-                                >
-                                    <div className="flex justify-between items-start mb-2">
-                                        <div className="flex items-center gap-2">
-                                            {/* Status Badge */}
-                                            {req.status === 'NEW' && <span className="bg-blue-100 text-blue-700 text-[10px] px-2 py-0.5 rounded font-bold uppercase">New</span>}
-                                            {['ACCEPTED', 'ARRIVED', 'IN_PROGRESS'].includes(req.status) && <span className="bg-amber-100 text-amber-700 text-[10px] px-2 py-0.5 rounded font-bold uppercase">Active</span>}
-                                            {req.status === 'COMPLETED' && <span className="bg-green-100 text-green-700 text-[10px] px-2 py-0.5 rounded font-bold uppercase">Done</span>}
-                                            
-                                            <span className={`font-bold text-sm ${selectedJobId === req.id ? 'text-blue-100' : 'text-slate-500'}`}>{req.distance}</span>
-                                        </div>
-                                        <span className={`font-bold text-lg ${selectedJobId === req.id ? 'text-white' : 'text-slate-900'}`}>
-                                            ${req.payout}
-                                        </span>
-                                    </div>
-                                    <h3 className={`font-bold text-lg mb-1 ${selectedJobId === req.id ? 'text-white' : 'text-slate-800'}`}>{req.vehicle}</h3>
-                                    <p className={`text-xs ${selectedJobId === req.id ? 'text-blue-100' : 'text-slate-400'}`}>{req.issue}</p>
-                                    
-                                    {req.status === 'NEW' && (
-                                        <div className="mt-3 pt-3 border-t border-white/20 flex gap-2">
-                                            <button onClick={(e) => handleAcceptJob(req.id, e)} className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold uppercase ${selectedJobId === req.id ? 'bg-white text-blue-600' : 'bg-blue-50 text-blue-600'}`}>Accept</button>
-                                        </div>
-                                    )}
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                    {/* Hide map on mobile for requests tab, forcing use of Map tab for map on mobile */}
-                    <div className="hidden md:flex flex-1 bg-gray-100 relative flex-col">
-                        <DashboardMap 
-                            requests={visibleRequests} 
-                            activeId={selectedJobId} 
-                            onSelect={setSelectedJobId} 
-                            mechanicLocation={mechanicLocation}
-                        />
-                        {activeJob && !showCompletionModal && (
-                            <div className="absolute bottom-6 left-6 right-6 md:left-auto md:right-6 md:w-96 bg-white rounded-3xl shadow-2xl p-6 animate-slide-up border border-slate-100 z-10" style={{ marginBottom: 'env(safe-area-inset-bottom)' }}>
-                                <div className="flex justify-between items-center mb-4">
-                                    <h2 className="text-xl font-bold">{activeJob.customerName}</h2>
-                                    <button 
-                                        onClick={() => setChatJob(activeJob)}
-                                        className="p-2 bg-blue-50 text-blue-600 rounded-full hover:bg-blue-100 transition-colors"
-                                    >
-                                        <MessageSquare size={20} />
-                                    </button>
-                                </div>
-                                <div className="flex gap-4">
-                                    {activeJob.status === 'NEW' ? (
-                                        <button onClick={() => handleAcceptJob(activeJob.id)} className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-bold">Accept Job</button>
-                                    ) : activeJob.status === 'ACCEPTED' ? (
-                                        <button onClick={() => handleStatusUpdate(activeJob.id, 'ARRIVED')} className="flex-1 bg-indigo-600 text-white py-3 rounded-xl font-bold">I've Arrived</button>
-                                    ) : activeJob.status === 'ARRIVED' ? (
-                                        <button onClick={() => handleStatusUpdate(activeJob.id, 'IN_PROGRESS')} className="flex-1 bg-amber-500 text-white py-3 rounded-xl font-bold">Start Repair</button>
-                                    ) : activeJob.status === 'IN_PROGRESS' ? (
-                                        <button onClick={() => handleCompleteJobClick(activeJob.id)} className="flex-1 bg-green-600 text-white py-3 rounded-xl font-bold">Complete Job</button>
-                                    ) : (
-                                        <button disabled className="flex-1 bg-slate-100 text-slate-400 py-3 rounded-xl font-bold cursor-default">Job Completed</button>
-                                    )}
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            )}
+        {/* Main Content Area */}
+        <div className="flex-1 relative overflow-hidden flex flex-col md:flex-row">
             
-            {activeTab === 'map' && (
-                <div className="flex-1 bg-gray-100 relative flex flex-col h-full">
-                    <div className="absolute top-4 left-4 z-10 bg-white/90 backdrop-blur px-4 py-2 rounded-full shadow-sm border border-slate-200 text-xs font-bold text-slate-600 flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-                        Live Job Map
-                    </div>
-                    
-                    <DashboardMap 
-                        requests={requests.filter(r => ['NEW', 'ACCEPTED', 'ARRIVED', 'IN_PROGRESS'].includes(r.status))} 
-                        activeId={selectedJobId} 
-                        onSelect={setSelectedJobId} 
-                        mechanicLocation={mechanicLocation}
-                    />
+            {/* Map Background (Always rendered for smoothness, hidden on mobile if not tab) */}
+            <div className={`absolute inset-0 z-0 ${activeTab === 'map' ? 'block' : 'hidden md:block'}`}>
+                <DashboardMap 
+                    requests={requests.filter(r => r.status === 'NEW' || r.mechanicId === user?.id)} 
+                    activeId={activeJobId} 
+                    onSelect={setActiveJobId}
+                    mechanicLocation={location}
+                />
+            </div>
 
-                    {activeJob && !showCompletionModal && (
-                        <div className="absolute bottom-6 left-6 right-6 md:left-auto md:right-6 md:w-96 bg-white rounded-3xl shadow-2xl p-6 animate-slide-up border border-slate-100 z-10" style={{ marginBottom: 'env(safe-area-inset-bottom)' }}>
-                             <div className="flex justify-between items-start mb-2">
-                                <div>
-                                    <h2 className="text-xl font-bold text-slate-900">{activeJob.customerName}</h2>
-                                     <p className="text-slate-500 text-sm">{activeJob.vehicle}</p>
-                                </div>
-                                <div className="bg-slate-100 px-2 py-1 rounded text-xs font-bold text-slate-600">
-                                    ${activeJob.payout}
-                                </div>
-                             </div>
-                             <p className="text-slate-600 text-sm mb-4 bg-slate-50 p-3 rounded-xl border border-slate-100">{activeJob.issue}</p>
-                             
-                             <div className="flex gap-3">
-                                 {activeJob.status === 'NEW' ? (
-                                     <button onClick={() => handleAcceptJob(activeJob.id)} className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-bold shadow-lg shadow-blue-200">Accept Job</button>
-                                 ) : (
-                                     <div className="flex gap-2 w-full">
-                                         <button onClick={() => setChatJob(activeJob)} className="p-3 bg-blue-50 text-blue-600 rounded-xl"><MessageSquare size={20}/></button>
-                                         <button onClick={() => setActiveTab('requests')} className="flex-1 bg-slate-100 text-slate-700 py-3 rounded-xl font-bold hover:bg-slate-200">View Details</button>
-                                     </div>
-                                 )}
-                             </div>
-                        </div>
-                    )}
-                </div>
-            )}
-            
-            {activeTab === 'earnings' && (
-                <div className="p-8 max-w-5xl mx-auto w-full overflow-y-auto pb-[env(safe-area-inset-bottom)]">
-                    <h2 className="text-3xl font-bold text-slate-900 mb-6">Earnings & Payouts</h2>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-                            <p className="text-slate-500 text-sm font-bold uppercase mb-2">Today</p>
-                            <p className="text-4xl font-bold text-slate-900">${earningsStats.today.toFixed(2)}</p>
-                        </div>
-                        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-                            <p className="text-slate-500 text-sm font-bold uppercase mb-2">This Week</p>
-                            <p className="text-4xl font-bold text-slate-900">${earningsStats.week.toFixed(2)}</p>
-                        </div>
-                        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-                            <p className="text-slate-500 text-sm font-bold uppercase mb-2">This Month</p>
-                            <p className="text-4xl font-bold text-slate-900">${earningsStats.month.toFixed(2)}</p>
-                        </div>
-                    </div>
-
-                    <div className="bg-slate-900 text-white p-8 rounded-3xl shadow-xl flex flex-col md:flex-row items-center justify-between gap-8">
-                        <div>
-                            <h3 className="text-2xl font-bold mb-2 flex items-center gap-2">
-                                <Wallet /> MechanicNow Payouts
-                            </h3>
-                            <p className="text-slate-300 max-w-md">
-                                {isStripeConnected 
-                                    ? "Your Stripe account is connected. Earnings are automatically transferred or available for cash out." 
-                                    : "Connect a bank account or debit card to receive your earnings instantly via Stripe."}
-                            </p>
+            {/* Content Overlay (Desktop: Left Panel, Mobile: Full Screen based on Tab) */}
+            <div className={`relative z-10 w-full md:w-[450px] h-full bg-slate-100 md:shadow-2xl flex flex-col transition-transform duration-300 ${activeTab === 'map' ? 'translate-y-full md:translate-y-0 pointer-events-none md:pointer-events-auto opacity-0 md:opacity-100' : ''}`}>
+                
+                {/* Active Job Floating Card (If any) */}
+                {activeJob && activeTab !== 'earnings' && activeTab !== 'profile' && activeTab !== 'history' && (
+                     <div className="bg-blue-600 text-white p-4 m-4 rounded-2xl shadow-xl animate-slide-up pointer-events-auto">
+                        <div className="flex justify-between items-start mb-2">
+                            <div>
+                                <h3 className="font-bold text-lg">{activeJob.vehicle}</h3>
+                                <p className="text-blue-100 text-sm">{activeJob.issue}</p>
+                            </div>
+                            <span className="bg-white/20 px-2 py-1 rounded text-xs font-bold">{activeJob.status}</span>
                         </div>
                         
-                        <div className="flex flex-col items-end gap-2">
-                            {!isStripeConnected ? (
-                                <button 
-                                    onClick={handleStripeConnect}
-                                    className="bg-white text-slate-900 px-8 py-4 rounded-xl font-bold hover:bg-blue-50 transition-colors flex items-center gap-2"
-                                >
-                                    <Link2 size={20} /> Setup Payouts
-                                </button>
-                            ) : (
-                                <button 
-                                    onClick={handleCashOut}
-                                    disabled={earningsStats.week <= 0 || isCashOutProcessing}
-                                    className="bg-green-500 text-white px-8 py-4 rounded-xl font-bold hover:bg-green-400 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-green-900/20"
-                                >
-                                    {isCashOutProcessing ? <Loader2 className="animate-spin"/> : <DollarSign size={20} />} 
-                                    Cash Out Now
+                        <div className="flex gap-2 mt-4">
+                            {activeJob.status === 'ACCEPTED' && (
+                                <button onClick={() => handleJobAction(activeJob, 'ARRIVE')} className="flex-1 bg-white text-blue-600 py-2 rounded-lg font-bold hover:bg-blue-50">
+                                    Arrived at Location
                                 </button>
                             )}
-                            {isStripeConnected && <div className="text-xs text-green-400 font-medium flex items-center gap-1"><CheckCircle size={12}/> Account Connected</div>}
+                            {activeJob.status === 'ARRIVED' && (
+                                <button onClick={() => handleJobAction(activeJob, 'START')} className="flex-1 bg-white text-blue-600 py-2 rounded-lg font-bold hover:bg-blue-50">
+                                    Start Job
+                                </button>
+                            )}
+                            {activeJob.status === 'IN_PROGRESS' && (
+                                <button onClick={() => setShowComplete(true)} className="flex-1 bg-green-400 text-green-900 py-2 rounded-lg font-bold hover:bg-green-300">
+                                    Complete Job
+                                </button>
+                            )}
+                            <button onClick={() => setShowChat(true)} className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center hover:bg-white/30"><MessageSquare size={20}/></button>
+                            <a href={`tel:5555555555`} className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center hover:bg-white/30"><Phone size={20}/></a>
                         </div>
-                    </div>
-                </div>
-            )}
+                     </div>
+                )}
 
-            {activeTab === 'history' && (
-                <div className="p-8 max-w-5xl mx-auto w-full overflow-y-auto pb-[env(safe-area-inset-bottom)]">
-                    <h2 className="text-3xl font-bold text-slate-900 mb-2">Service History</h2>
-                    <p className="text-slate-500 mb-8">A record of all your completed repairs.</p>
-
-                    <div className="space-y-4">
-                        {completedJobs.length === 0 ? (
-                            <div className="text-center py-12 bg-white rounded-3xl border border-dashed border-slate-200">
-                                <ClipboardList size={48} className="text-slate-300 mx-auto mb-4" />
-                                <h3 className="text-xl font-bold text-slate-900 mb-2">No completed jobs yet</h3>
-                                <p className="text-slate-500">When you finish a repair, it will appear here.</p>
-                            </div>
-                        ) : (
-                            completedJobs.map(job => (
-                                <div key={job.id} className="bg-white p-6 rounded-2xl border border-slate-100 flex flex-col md:flex-row justify-between items-center gap-4">
-                                    <div className="flex items-center gap-4">
-                                        <div className="w-12 h-12 bg-green-100 text-green-600 rounded-full flex items-center justify-center">
-                                            <CheckCircle size={24} />
+                {/* Tabs Content */}
+                <div className="flex-1 overflow-y-auto pointer-events-auto pb-20">
+                    
+                    {activeTab === 'requests' && (
+                        <div className="p-4 space-y-4">
+                            <h2 className="font-bold text-slate-500 text-xs uppercase tracking-wider mb-2">New Requests ({requests.filter(r => r.status === 'NEW').length})</h2>
+                            {requests.filter(r => r.status === 'NEW').length === 0 ? (
+                                <div className="text-center py-10 text-slate-400">
+                                    <div className="w-16 h-16 bg-slate-200 rounded-full flex items-center justify-center mx-auto mb-3 animate-pulse">
+                                        <Wrench size={24} />
+                                    </div>
+                                    <p>Scanning for jobs...</p>
+                                </div>
+                            ) : (
+                                requests.filter(r => r.status === 'NEW').map(req => (
+                                    <div key={req.id} className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
+                                        <div className="flex justify-between items-start mb-2">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center font-bold">{req.customerName[0]}</div>
+                                                <div>
+                                                    <h3 className="font-bold text-slate-900">{req.customerName}</h3>
+                                                    <div className="flex items-center gap-1 text-xs text-slate-500">
+                                                        <MapPin size={12}/> {req.distance} • 15 min away
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="text-right">
+                                                <div className="font-bold text-green-600 text-lg">${req.payout.toFixed(0)}</div>
+                                                {req.urgency === 'HIGH' && <div className="text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-bold inline-block">URGENT</div>}
+                                            </div>
                                         </div>
-                                        <div>
-                                            <h4 className="font-bold text-slate-900 text-lg">{job.vehicle}</h4>
-                                            <p className="text-sm text-slate-500">{job.issue} • {job.customerName}</p>
-                                            <p className="text-xs text-slate-400 mt-1">Completed on {new Date().toLocaleDateString()}</p>
+                                        
+                                        <div className="bg-slate-50 p-3 rounded-xl mb-4 text-sm text-slate-700">
+                                            <span className="font-bold block text-slate-900 mb-1">{req.vehicle}</span>
+                                            {req.issue}
+                                        </div>
+
+                                        <div className="flex gap-2">
+                                            <button onClick={() => handleJobAction(req, 'DECLINE')} className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-50 rounded-xl">Decline</button>
+                                            <button onClick={() => handleJobAction(req, 'ACCEPT')} className="flex-[2] py-3 bg-slate-900 text-white font-bold rounded-xl hover:bg-slate-800 shadow-lg shadow-slate-200">Accept Job</button>
                                         </div>
                                     </div>
-                                    <div className="text-right">
-                                        <p className="text-2xl font-bold text-slate-900">${job.priceBreakdown?.mechanicPayout.toFixed(2)}</p>
-                                        <p className="text-xs text-slate-500 font-bold uppercase tracking-wider">Earned</p>
+                                ))
+                            )}
+                        </div>
+                    )}
+
+                    {activeTab === 'earnings' && (
+                        <div className="p-4 space-y-6">
+                            <h2 className="text-xl font-bold text-slate-900">Earnings</h2>
+                            
+                            {!stats.stripeConnected ? (
+                                <div className="bg-blue-600 text-white p-6 rounded-2xl shadow-xl text-center">
+                                    <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                                        <Banknote size={24} />
+                                    </div>
+                                    <h3 className="font-bold text-lg mb-2">Set up Payouts</h3>
+                                    <p className="text-blue-100 text-sm mb-6">Connect your bank account via Stripe to receive payments instantly.</p>
+                                    <button onClick={handleStripeConnect} className="w-full bg-white text-blue-600 py-3 rounded-xl font-bold hover:bg-blue-50">
+                                        Connect Stripe
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="bg-slate-900 text-white p-6 rounded-2xl shadow-xl">
+                                    <p className="text-slate-400 text-sm font-medium mb-1">Available for Payout</p>
+                                    <h3 className="text-4xl font-bold mb-6">${stats.earnings.week.toFixed(2)}</h3>
+                                    <button 
+                                        onClick={handleCashOut}
+                                        disabled={stats.earnings.week <= 0}
+                                        className="w-full bg-green-500 text-white py-3 rounded-xl font-bold hover:bg-green-400 disabled:opacity-50 disabled:bg-slate-700"
+                                    >
+                                        Cash Out Now
+                                    </button>
+                                </div>
+                            )}
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+                                    <p className="text-xs text-slate-500 font-bold uppercase">Today</p>
+                                    <p className="text-2xl font-bold text-slate-900">${stats.earnings.today}</p>
+                                </div>
+                                <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+                                    <p className="text-xs text-slate-500 font-bold uppercase">This Month</p>
+                                    <p className="text-2xl font-bold text-slate-900">${stats.earnings.month}</p>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {activeTab === 'history' && (
+                        <div className="p-4 space-y-4">
+                            <h2 className="text-xl font-bold text-slate-900">Completed Jobs</h2>
+                            {completedJobs.length === 0 ? (
+                                <p className="text-slate-400 text-center py-8">No completed jobs yet.</p>
+                            ) : (
+                                completedJobs.map(job => (
+                                    <div key={job.id} className="bg-white p-4 rounded-2xl border border-slate-100 flex justify-between items-center">
+                                        <div>
+                                            <h4 className="font-bold text-slate-900">{job.vehicle}</h4>
+                                            <p className="text-xs text-slate-500">{new Date().toLocaleDateString()}</p>
+                                        </div>
+                                        <div className="text-right">
+                                            <span className="block font-bold text-green-600">+${(job.payout * 0.8).toFixed(2)}</span>
+                                            <span className="text-[10px] text-slate-400 uppercase">Net Earned</span>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    )}
+
+                    {activeTab === 'profile' && (
+                         <div className="p-4 space-y-4">
+                            <div className="text-center mb-6">
+                                <img src={user?.avatar} className="w-24 h-24 rounded-full mx-auto mb-3 border-4 border-white shadow-lg" />
+                                <h2 className="text-xl font-bold text-slate-900">{user?.name}</h2>
+                                <p className="text-slate-500">Certified Mechanic</p>
+                            </div>
+
+                            <div className="bg-white p-4 rounded-2xl border border-slate-200">
+                                <h3 className="font-bold text-slate-900 mb-4">Settings</h3>
+                                <div className="space-y-2">
+                                    <div className="flex justify-between p-3 hover:bg-slate-50 rounded-lg cursor-pointer">
+                                        <span>Edit Bio</span> <ChevronRight size={16} className="text-slate-400"/>
+                                    </div>
+                                    <div className="flex justify-between p-3 hover:bg-slate-50 rounded-lg cursor-pointer">
+                                        <span>Update Insurance</span> <ChevronRight size={16} className="text-slate-400"/>
+                                    </div>
+                                    <div className="flex justify-between p-3 hover:bg-slate-50 rounded-lg cursor-pointer">
+                                        <span>Change Password</span> <ChevronRight size={16} className="text-slate-400"/>
                                     </div>
                                 </div>
-                            ))
-                        )}
-                    </div>
+                            </div>
+                             
+                            <button className="w-full py-4 text-red-500 font-bold bg-white border border-red-100 rounded-xl hover:bg-red-50">
+                                Log Out
+                            </button>
+                         </div>
+                    )}
+
                 </div>
-            )}
-
-            {activeTab === 'profile' && (
-                <div className="p-8 max-w-3xl mx-auto w-full overflow-y-auto pb-[env(safe-area-inset-bottom)]">
-                    <h2 className="text-3xl font-bold text-slate-900 mb-6">Mechanic Profile</h2>
-                    
-                    <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm mb-6">
-                        <div className="flex items-center gap-4 mb-6">
-                            <img src={user?.avatar} alt="Profile" className="w-20 h-20 rounded-full bg-slate-100" />
-                            <div>
-                                <h3 className="text-xl font-bold text-slate-900">{user?.name}</h3>
-                                <p className="text-slate-500">{user?.email}</p>
-                            </div>
-                        </div>
-
-                        <div className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-bold text-slate-700 mb-1">Bio</label>
-                                <textarea 
-                                    className="w-full p-3 border border-slate-200 rounded-xl"
-                                    rows={3}
-                                    value={profileBio}
-                                    onChange={(e) => setProfileBio(e.target.value)}
-                                    placeholder="Tell customers about yourself..."
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-bold text-slate-700 mb-1">Years Experience</label>
-                                <input 
-                                    type="number"
-                                    className="w-full p-3 border border-slate-200 rounded-xl"
-                                    value={profileExp}
-                                    onChange={(e) => setProfileExp(parseInt(e.target.value))}
-                                />
-                            </div>
-                        </div>
-                    </div>
-
-                    <button onClick={handleSaveProfile} className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold hover:bg-blue-500 shadow-lg shadow-blue-200">
-                        Save Changes
-                    </button>
-                </div>
-            )}
+            </div>
         </div>
-        
+
+        {/* Bottom Tab Bar (Mobile Only) */}
+        <div className="md:hidden bg-white border-t border-gray-200 px-6 py-3 flex justify-between items-center z-30 pb-[env(safe-area-inset-bottom)]">
+            <button onClick={() => setActiveTab('requests')} className={`flex flex-col items-center gap-1 ${activeTab === 'requests' ? 'text-slate-900' : 'text-slate-400'}`}>
+                <ClipboardList size={24} strokeWidth={activeTab === 'requests' ? 2.5 : 2} />
+                <span className="text-[10px] font-bold">Jobs</span>
+            </button>
+            <button onClick={() => setActiveTab('map')} className={`flex flex-col items-center gap-1 ${activeTab === 'map' ? 'text-slate-900' : 'text-slate-400'}`}>
+                <MapIcon size={24} strokeWidth={activeTab === 'map' ? 2.5 : 2} />
+                <span className="text-[10px] font-bold">Map</span>
+            </button>
+             <button onClick={() => setActiveTab('earnings')} className={`flex flex-col items-center gap-1 ${activeTab === 'earnings' ? 'text-slate-900' : 'text-slate-400'}`}>
+                <Wallet size={24} strokeWidth={activeTab === 'earnings' ? 2.5 : 2} />
+                <span className="text-[10px] font-bold">Earn</span>
+            </button>
+            <button onClick={() => setActiveTab('profile')} className={`flex flex-col items-center gap-1 ${activeTab === 'profile' ? 'text-slate-900' : 'text-slate-400'}`}>
+                <User size={24} strokeWidth={activeTab === 'profile' ? 2.5 : 2} />
+                <span className="text-[10px] font-bold">Me</span>
+            </button>
+        </div>
+
+        {/* Desktop Sidebar Navigation (Hidden Mobile) - Actually managed by Layout wrapper usually, but if this page is standalone: */}
+        {/* Included in Main Content Overlay style above as a persistent left panel */}
+
         {/* Modals */}
-        {showCompletionModal && activeJob && (
-             <CompletionModal 
-                job={activeJob} 
-                onClose={handleCloseCompletionModal} 
-                onComplete={handleProcessPayment} 
-             />
-        )}
-        {chatJob && (
-            <JobChat job={chatJob} onClose={() => setChatJob(null)} />
-        )}
-        {navPromptJob && (
-             <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-                <div className="bg-white rounded-2xl p-6 max-w-sm w-full animate-scale-up text-center">
-                    <Navigation size={48} className="text-blue-600 mx-auto mb-4" />
-                    <h3 className="text-xl font-bold text-slate-900 mb-2">Open Navigation?</h3>
-                    <p className="text-slate-500 mb-6">We can open Google Maps to guide you to the customer's location.</p>
-                    <div className="flex gap-3">
-                        <button onClick={() => handleConfirmNavigation(false)} className="flex-1 py-3 bg-slate-100 text-slate-700 font-bold rounded-xl">No, Just Accept</button>
-                        <button onClick={() => handleConfirmNavigation(true)} className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl">Open Maps</button>
-                    </div>
-                </div>
-             </div>
-        )}
-        {isOnboardingStripe && (
-             <div className="fixed inset-0 z-[70] bg-white/80 backdrop-blur-md flex flex-col items-center justify-center">
-                 <Loader2 size={64} className="text-blue-600 animate-spin mb-4" />
-                 <h3 className="text-2xl font-bold text-slate-900">Connecting to Stripe...</h3>
-                 <p className="text-slate-500">Please wait while we verify your payout details.</p>
-             </div>
-        )}
+        {showChat && activeJob && <JobChat job={activeJob} onClose={() => setShowChat(false)} />}
+        {showComplete && activeJob && <CompletionModal job={activeJob} onClose={() => setShowComplete(false)} onComplete={handleCompleteJob} />}
+
     </div>
   );
 };
