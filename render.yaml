@@ -1,0 +1,35 @@
+services:
+  # Frontend - Static Site
+  - type: web
+    name: mechanicnow-frontend
+    env: static
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: NODE_VERSION
+        value: 18
+
+  # Backend - Express.js API
+  - type: web
+    name: mechanicnow-backend
+    env: node
+    region: oregon
+    plan: starter
+    rootDir: mnbe
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: 18
+      - key: PORT
+        value: 3000
+      # Add these environment variables in the Render dashboard:
+      # - GOOGLE_APPLICATION_CREDENTIALS (Firebase service account)
+      # - STRIPE_SECRET_KEY (Stripe API key)
+      # - TWILIO_ACCOUNT_SID (Twilio credentials)
+      # - TWILIO_AUTH_TOKEN (Twilio credentials)
