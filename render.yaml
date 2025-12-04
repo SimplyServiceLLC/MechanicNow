@@ -28,8 +28,4 @@ services:
         value: 18
       - key: PORT
         value: 3000
-      # Add these environment variables in the Render dashboard:
-      # - GOOGLE_APPLICATION_CREDENTIALS (Firebase service account)
-      # - STRIPE_SECRET_KEY (Stripe API key)
-      # - TWILIO_ACCOUNT_SID (Twilio credentials)
-      # - TWILIO_AUTH_TOKEN (Twilio credentials)
+      # Additional environment variables required - see mnbe/README.md for details

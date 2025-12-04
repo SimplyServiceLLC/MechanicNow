@@ -10,6 +10,7 @@ app.use(cors());
 app.use(express.json());
 
 // Initialize Firebase Admin
+let db;
 try {
   // In production, Firebase Admin SDK will use Application Default Credentials
   // or credentials from GOOGLE_APPLICATION_CREDENTIALS environment variable
@@ -18,11 +19,11 @@ try {
       credential: admin.credential.applicationDefault()
     });
   }
+  db = admin.firestore();
 } catch (error) {
   console.warn('Firebase Admin initialization skipped (credentials not available):', error.message);
+  db = null;
 }
-
-const db = admin.firestore();
 
 // Health check endpoint
 app.get('/health', (req, res) => {
