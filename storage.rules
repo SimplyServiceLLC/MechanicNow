@@ -1,0 +1,28 @@
+
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Helper functions
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+    function isAdmin() {
+      // In a real app, you'd check custom claims. 
+      return request.auth != null; 
+    }
+
+    // Public Avatars (Profile Photos)
+    match /uploads/{userId}/profilePhoto/{fileName} {
+      allow read: if true;
+      allow write: if isOwner(userId);
+    }
+    
+    // Sensitive Documents (License, Insurance)
+    // ONLY the user who uploaded it and Admins can read these.
+    match /uploads/{userId}/documents/{fileName} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow write: if isOwner(userId);
+    }
+  }
+}

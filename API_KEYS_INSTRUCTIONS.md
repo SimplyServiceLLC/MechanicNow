@@ -1,4 +1,5 @@
 
+
 # Production Deployment & API Key Configuration
 
 To make MechanicNow fully functional with real payments, notifications, and data storage, you must configure the following services.
@@ -23,18 +24,22 @@ firebase functions:config:set \
   twilio.sid="AC..." \
   twilio.token="..." \
   twilio.phone="+15550000000" \
+  email.user="your_email@gmail.com" \
+  email.pass="your_app_password" \
   checkr.api_key="..."
 ```
 
 ## 3. Deployment
 
-1.  **Build the Frontend**:
+1.  **Set Frontend Keys**: Create a `.env` file with `VITE_STRIPE_PUBLISHABLE_KEY=pk_live_...`
+
+2.  **Build the Frontend**:
     ```bash
     npm install
     npm run build
     ```
 
-2.  **Deploy Backend & Frontend**:
+3.  **Deploy Backend & Frontend**:
     ```bash
     firebase deploy
     ```
@@ -54,4 +59,3 @@ FIREBASE_PROJECT_ID=...
 
 1.  In Stripe Dashboard, go to **Connect > Settings**.
 2.  Add your production URL (e.g., `https://mechanicnow.app/mechanic-dashboard`) to the **Redirects** allowlist.
-
