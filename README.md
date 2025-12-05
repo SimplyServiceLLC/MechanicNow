@@ -14,7 +14,26 @@ View your app in AI Studio: https://ai.studio/apps/drive/1wIk5V1xvIVxi9zQWSrkXOo
 
 
 1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+   ```bash
+   npm install --legacy-peer-deps
+   ```
+
+2. Configure environment variables:
+   - Copy `.env.example` to `.env.local`
+   - Set your `GEMINI_API_KEY` in `.env.local` (get it from [AI Studio](https://aistudio.google.com/app/apikey))
+   - Configure Firebase credentials (see [API_KEYS_INSTRUCTIONS.md](API_KEYS_INSTRUCTIONS.md) for details)
+
 3. Run the app:
-   `npm run dev`
+   ```bash
+   npm run dev
+   ```
+
+## Firebase Setup
+
+This app uses Firebase for Authentication, Firestore Database, Storage, and Cloud Functions. To enable full functionality:
+
+1. Create a Firebase project at [console.firebase.google.com](https://console.firebase.google.com)
+2. Enable Authentication (Email/Password), Firestore, and Storage
+3. Copy your Firebase config values to `.env.local`
+
+See [API_KEYS_INSTRUCTIONS.md](API_KEYS_INSTRUCTIONS.md) for detailed setup instructions.
