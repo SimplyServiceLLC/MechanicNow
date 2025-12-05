@@ -15,11 +15,11 @@ const stripePromise = loadStripe(process.env.VITE_STRIPE_PUBLISHABLE_KEY || '');
 
 const getAvailabilityColor = (status: string) => {
   switch (status) {
-    case 'Available Now': return 'text-green-600';
-    case 'On another job': return 'text-amber-600';
-    case 'Offline': return 'text-slate-400';
-    case 'Unavailable': return 'text-red-500';
-    default: return 'text-blue-600';
+    case 'Available Now': return 'text-green-700';
+    case 'On another job': return 'text-amber-700';
+    case 'Offline': return 'text-slate-500';
+    case 'Unavailable': return 'text-red-700';
+    default: return 'text-blue-700';
   }
 };
 
@@ -32,6 +32,16 @@ const getAvailabilityBg = (status: string) => {
     default: return 'bg-blue-500';
   }
 };
+
+const getAvailabilityContainerClass = (status: string) => {
+    switch (status) {
+      case 'Available Now': return 'bg-green-50 border-green-200';
+      case 'On another job': return 'bg-amber-50 border-amber-200';
+      case 'Offline': return 'bg-slate-100 border-slate-200';
+      case 'Unavailable': return 'bg-red-50 border-red-200';
+      default: return 'bg-blue-50 border-blue-200';
+    }
+  };
 
 const MechanicProfileView = ({ mechanic, onBack, onBook, totalPrice }: { mechanic: Mechanic, onBack: () => void, onBook: () => void, totalPrice: number }) => (
   <div className="min-h-screen bg-white pb-24 animate-slide-up">
@@ -63,7 +73,8 @@ const MechanicProfileView = ({ mechanic, onBack, onBook, totalPrice }: { mechani
                     <span>•</span>
                     <span>{mechanic.distance} away</span>
                     <span>•</span>
-                    <span className={`font-medium ${getAvailabilityColor(mechanic.availability)}`}>
+                    <span className={`font-medium px-2 py-0.5 rounded-full text-xs flex items-center gap-1 border ${getAvailabilityContainerClass(mechanic.availability)} ${getAvailabilityColor(mechanic.availability)}`}>
+                        <div className={`w-1.5 h-1.5 rounded-full ${getAvailabilityBg(mechanic.availability)}`}></div>
                         {mechanic.availability}
                     </span>
                   </div>
@@ -766,9 +777,17 @@ export const MechanicList: React.FC = () => {
                             </div>
                             
                             <div className="flex-1">
-                                <div className="flex flex-wrap justify-between items-start mb-2 gap-2">
-                                    <h3 className="text-xl font-bold text-slate-800 group-hover:text-blue-600 transition-colors">{mechanic.name} <span className="text-sm font-normal text-slate-400 ml-2 hidden sm:inline">Certified</span></h3>
-                                    
+                                <div className="flex flex-wrap items-center gap-2 mb-1">
+                                    <h3 className="text-xl font-bold text-slate-800 group-hover:text-blue-600 transition-colors">{mechanic.name}</h3>
+                                    {/* Availability Badge */}
+                                    <span className={`text-xs px-2 py-0.5 rounded-full font-bold flex items-center gap-1 border ${getAvailabilityContainerClass(mechanic.availability)} ${getAvailabilityColor(mechanic.availability)}`}>
+                                        <div className={`w-1.5 h-1.5 rounded-full ${getAvailabilityBg(mechanic.availability)} ${mechanic.availability === 'Available Now' ? 'animate-pulse' : ''}`}></div>
+                                        {mechanic.availability}
+                                    </span>
+                                    <span className="text-sm font-normal text-slate-400 hidden sm:inline">Certified</span>
+                                </div>
+
+                                <div className="flex flex-wrap gap-2 mb-4">
                                     {mechanic.availability !== 'Offline' && mechanic.availability !== 'Unavailable' && (idx === 0 || (mechanic as any).matchReason) && (
                                         <span className={`text-xs px-2 py-1 rounded-full font-bold flex items-center gap-1 ${idx === 0 ? 'bg-green-100 text-green-700' : 'bg-blue-50 text-blue-600'}`}>
                                         {idx === 0 && <Zap size={12} fill="currentColor" />}
@@ -782,7 +801,7 @@ export const MechanicList: React.FC = () => {
                                     )}
                                 </div>
                                 
-                                <div className="flex flex-wrap gap-4 text-sm text-slate-600 mb-4">
+                                <div className="flex flex-wrap gap-4 text-sm text-slate-600">
                                     <div className="flex items-center gap-1">
                                         <MapPinIcon className="text-slate-400" size={16} />
                                         <span>{mechanic.distance} away</span>
@@ -791,11 +810,6 @@ export const MechanicList: React.FC = () => {
                                         <Clock className="text-slate-400" size={16} />
                                         <span>Reliability: <span className="font-semibold text-slate-800">{mechanic.eta}</span></span>
                                     </div>
-                                </div>
-                                
-                                <div className="flex items-center gap-2 text-xs">
-                                    <span className={`w-2 h-2 rounded-full ${getAvailabilityBg(mechanic.availability)}`}></span>
-                                    <span className={`font-medium ${getAvailabilityColor(mechanic.availability)}`}>{mechanic.availability}</span>
                                 </div>
                             </div>
 
