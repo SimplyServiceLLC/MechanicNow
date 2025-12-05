@@ -1,4 +1,5 @@
 
+
 import { UserProfile, JobRequest, PaymentMethod, Mechanic, MechanicRegistrationData } from '../types';
 import * as firebaseApp from 'firebase/app';
 import * as firebaseAuth from 'firebase/auth';
@@ -316,6 +317,7 @@ const RealApi = {
             yearsExperience: data.yearsExperience,
             specialties: data.specialties,
             certifications: data.certifications,
+            schedule: data.schedule,
             availability: 'Offline',
             reviews: [],
             lat: 36.8508, 
@@ -362,6 +364,7 @@ const RealApi = {
                specialties: data.specialties || [],
                certifications: data.certifications || [],
                reviews: data.reviews || [],
+               schedule: data.schedule || {},
                lat: data.lat || lat,
                lng: data.lng || lng,
                verified: !!data.verified
@@ -580,4 +583,3 @@ const RealApi = {
 };
 
 export const api = RealApi;
-    

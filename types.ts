@@ -69,10 +69,10 @@ export interface Mechanic {
   bio?: string;
   yearsExperience?: number;
   specialties?: string[];
-  reviews?: Review[];
   certifications?: string[];
   schedule?: MechanicSchedule;
   verified?: boolean;
+  reviews?: Review[];
 }
 
 export interface MechanicRegistrationData {
@@ -85,6 +85,7 @@ export interface MechanicRegistrationData {
   specialties: string[];
   certifications: string[];
   zipCode: string;
+  schedule: MechanicSchedule;
 }
 
 export interface ChatMessage {

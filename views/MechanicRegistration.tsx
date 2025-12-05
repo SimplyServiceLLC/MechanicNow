@@ -1,13 +1,22 @@
 
+
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../App';
-import { Wrench, User, Mail, Lock, Phone as PhoneIcon, Upload, CheckCircle, ChevronRight, ArrowLeft, ShieldCheck, MapPin, Briefcase, Award, Loader2, FileText, AlertTriangle, Camera } from 'lucide-react';
+import { Wrench, User, Mail, Lock, Phone as PhoneIcon, Upload, CheckCircle, ChevronRight, ArrowLeft, ShieldCheck, MapPin, Briefcase, Award, Loader2, FileText, AlertTriangle, Camera, Clock } from 'lucide-react';
 import { api } from '../services/api';
 import { MechanicRegistrationData } from '../types';
 
 // Extended Vehicle Data (Make -> Models) to show capability
 const VEHICLE_DATA_KEYS = ["Toyota", "Honda", "Ford", "Chevrolet", "Nissan", "BMW", "Mercedes-Benz", "Audi", "Volkswagen"];
+
+const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+const HOURS = Array.from({length: 13}, (_, i) => {
+    const h = i + 8; // 8 AM to 8 PM
+    const ampm = h < 12 ? 'AM' : 'PM';
+    const disp = h <= 12 ? h : h - 12;
+    return `${disp}:00 ${ampm}`;
+});
 
 export const MechanicRegistration: React.FC = () => {
   const navigate = useNavigate();
@@ -24,7 +33,16 @@ export const MechanicRegistration: React.FC = () => {
     yearsExperience: 1,
     specialties: [],
     certifications: [],
-    zipCode: ''
+    zipCode: '',
+    schedule: {
+        monday: { start: '9:00 AM', end: '5:00 PM', active: true },
+        tuesday: { start: '9:00 AM', end: '5:00 PM', active: true },
+        wednesday: { start: '9:00 AM', end: '5:00 PM', active: true },
+        thursday: { start: '9:00 AM', end: '5:00 PM', active: true },
+        friday: { start: '9:00 AM', end: '5:00 PM', active: true },
+        saturday: { start: '10:00 AM', end: '4:00 PM', active: true },
+        sunday: { start: '10:00 AM', end: '2:00 PM', active: false }
+    }
   });
 
   const [ssn, setSsn] = useState(''); // Only for UI demo, do not store plain SSN in real app
@@ -62,6 +80,19 @@ export const MechanicRegistration: React.FC = () => {
             : [...prev.certifications, c]
       }));
   };
+  
+  const updateSchedule = (day: string, field: 'start' | 'end' | 'active', value: any) => {
+      setFormData(prev => ({
+          ...prev,
+          schedule: {
+              ...prev.schedule,
+              [day]: {
+                  ...prev.schedule[day],
+                  [field]: value
+              }
+          }
+      }));
+  };
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>, docType: 'license' | 'insurance' | 'profilePhoto') => {
       if (!e.target.files || e.target.files.length === 0) return;
@@ -94,7 +125,7 @@ export const MechanicRegistration: React.FC = () => {
           // 2. Trigger Checkr (Simulated)
           await api.mechanic.verifyBackground(formData.email, ssn);
           
-          setStep(5); // Success step
+          setStep(6); // Success step
       } catch (e: any) {
           console.error(e);
           notify("Registration Failed", e.message || "Could not create account.");
@@ -111,12 +142,13 @@ export const MechanicRegistration: React.FC = () => {
                 <span className={`text-xs font-bold uppercase tracking-wider ${step >= 1 ? 'text-blue-600' : 'text-slate-300'}`}>Account</span>
                 <span className={`text-xs font-bold uppercase tracking-wider ${step >= 2 ? 'text-blue-600' : 'text-slate-300'}`}>Profile</span>
                 <span className={`text-xs font-bold uppercase tracking-wider ${step >= 3 ? 'text-blue-600' : 'text-slate-300'}`}>Skills</span>
-                <span className={`text-xs font-bold uppercase tracking-wider ${step >= 4 ? 'text-blue-600' : 'text-slate-300'}`}>Verify</span>
+                <span className={`text-xs font-bold uppercase tracking-wider ${step >= 4 ? 'text-blue-600' : 'text-slate-300'}`}>Schedule</span>
+                <span className={`text-xs font-bold uppercase tracking-wider ${step >= 5 ? 'text-blue-600' : 'text-slate-300'}`}>Verify</span>
             </div>
             <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
                 <div 
                     className="h-full bg-blue-600 transition-all duration-500 ease-in-out" 
-                    style={{ width: `${(step / 4) * 100}%` }}
+                    style={{ width: `${(step / 5) * 100}%` }}
                 ></div>
             </div>
         </div>
@@ -338,8 +370,68 @@ export const MechanicRegistration: React.FC = () => {
                     </button>
                 </div>
             )}
-
+            
             {step === 4 && (
+                <div className="p-8 animate-fade-in">
+                    <button onClick={handleBack} className="mb-4 text-slate-400 hover:text-slate-600 flex items-center gap-1 text-sm font-medium"><ArrowLeft size={16}/> Back</button>
+                    <h2 className="text-2xl font-bold text-slate-900 mb-2">Availability Schedule</h2>
+                    <p className="text-slate-500 mb-6 text-sm">Set your standard working hours.</p>
+
+                    <div className="space-y-3">
+                        {DAYS.map(day => {
+                            const sched = formData.schedule[day];
+                            return (
+                                <div key={day} className={`p-3 rounded-xl border transition-colors ${sched.active ? 'bg-white border-slate-200' : 'bg-slate-50 border-slate-100'}`}>
+                                    <div className="flex items-center justify-between mb-2">
+                                        <div className="flex items-center gap-2">
+                                            <div 
+                                                onClick={() => updateSchedule(day, 'active', !sched.active)}
+                                                className={`w-10 h-6 rounded-full p-1 cursor-pointer transition-colors ${sched.active ? 'bg-green-500' : 'bg-slate-300'}`}
+                                            >
+                                                <div className={`w-4 h-4 bg-white rounded-full shadow-sm transition-transform ${sched.active ? 'translate-x-4' : ''}`}></div>
+                                            </div>
+                                            <span className="font-bold text-slate-700 capitalize">{day}</span>
+                                        </div>
+                                        {!sched.active && <span className="text-xs font-bold text-slate-400 uppercase">Day Off</span>}
+                                    </div>
+                                    
+                                    {sched.active && (
+                                        <div className="flex items-center gap-2">
+                                            <div className="relative flex-1">
+                                                <Clock className="absolute left-2 top-2.5 text-slate-400" size={14} />
+                                                <select 
+                                                    className="w-full pl-8 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-1 focus:ring-blue-500"
+                                                    value={sched.start}
+                                                    onChange={(e) => updateSchedule(day, 'start', e.target.value)}
+                                                >
+                                                    {HOURS.map(h => <option key={h} value={h}>{h}</option>)}
+                                                </select>
+                                            </div>
+                                            <span className="text-slate-400 text-xs">to</span>
+                                            <div className="relative flex-1">
+                                                <Clock className="absolute left-2 top-2.5 text-slate-400" size={14} />
+                                                <select 
+                                                    className="w-full pl-8 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-1 focus:ring-blue-500"
+                                                    value={sched.end}
+                                                    onChange={(e) => updateSchedule(day, 'end', e.target.value)}
+                                                >
+                                                    {HOURS.map(h => <option key={h} value={h}>{h}</option>)}
+                                                </select>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+
+                    <button onClick={handleNext} className="w-full mt-8 bg-blue-600 text-white py-4 rounded-xl font-bold hover:bg-blue-500 transition-colors flex items-center justify-center gap-2">
+                        Next Step <ChevronRight size={20} />
+                    </button>
+                </div>
+            )}
+
+            {step === 5 && (
                 <div className="p-8 animate-fade-in">
                     <button onClick={handleBack} className="mb-4 text-slate-400 hover:text-slate-600 flex items-center gap-1 text-sm font-medium"><ArrowLeft size={16}/> Back</button>
                     <h2 className="text-2xl font-bold text-slate-900 mb-2">Trust & Safety</h2>
@@ -439,7 +531,7 @@ export const MechanicRegistration: React.FC = () => {
                 </div>
             )}
 
-            {step === 5 && (
+            {step === 6 && (
                  <div className="p-12 animate-scale-up text-center">
                     <div className="w-24 h-24 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6">
                         <CheckCircle size={48} />

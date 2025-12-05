@@ -217,8 +217,8 @@ export const AdminDashboard: React.FC = () => {
                             <div className="divide-y divide-slate-100">
                                 {mechanics.map(mech => (
                                     <div key={mech.id} className="p-6 flex flex-col md:flex-row items-center justify-between gap-4 hover:bg-slate-50 transition-colors">
-                                        <div className="flex items-center gap-4 w-full md:w-auto">
-                                            <img src={mech.avatar} className="w-12 h-12 rounded-full bg-slate-200" />
+                                        <div className="flex items-center gap-4 w-full md:w-auto md:flex-1">
+                                            <img src={mech.avatar} className="w-12 h-12 rounded-full bg-slate-200 object-cover" />
                                             <div>
                                                 <h4 className="font-bold text-slate-900">{mech.name}</h4>
                                                 <div className="flex items-center gap-2 text-xs text-slate-500">
@@ -231,6 +231,21 @@ export const AdminDashboard: React.FC = () => {
                                                 </div>
                                             </div>
                                         </div>
+                                        
+                                        <div className="flex items-center justify-start md:justify-center gap-8 w-full md:w-auto md:px-8">
+                                            <div>
+                                                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Status</div>
+                                                <div className={`text-sm font-bold flex items-center gap-2 ${mech.availability === 'Available Now' ? 'text-green-600' : 'text-slate-500'}`}>
+                                                    <div className={`w-2 h-2 rounded-full ${mech.availability === 'Available Now' ? 'bg-green-500' : 'bg-slate-400'}`}></div>
+                                                    {mech.availability || 'Offline'}
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Jobs Done</div>
+                                                <div className="text-sm font-bold text-slate-900">{mech.jobsCompleted || 0}</div>
+                                            </div>
+                                        </div>
+
                                         <div className="flex gap-2 w-full md:w-auto">
                                             <button 
                                                 onClick={() => setReviewingMechanic(mech)}
