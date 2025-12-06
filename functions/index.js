@@ -156,6 +156,49 @@ exports.payoutToBank = functions.https.onCall(async (data, context) => {
     }
 });
 
+// --- Reviews ---
+
+exports.submitReview = functions.https.onCall(async (data, context) => {
+    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Must be logged in.');
+    const { mechanicId, jobId, rating, text, authorName } = data;
+
+    const mechanicRef = db.collection('mechanics').doc(mechanicId);
+    
+    await db.runTransaction(async (t) => {
+        const mechDoc = await t.get(mechanicRef);
+        if (!mechDoc.exists) throw new functions.https.HttpsError('not-found', 'Mechanic not found');
+
+        const currentData = mechDoc.data();
+        const currentReviews = currentData.reviews || [];
+        const currentRating = currentData.rating || 5.0;
+        
+        // Calculate new average
+        const newReview = {
+            id: 'rev_' + Date.now(),
+            author: authorName,
+            rating: Number(rating),
+            text: text,
+            date: new Date().toLocaleDateString()
+        };
+        
+        const newReviews = [newReview, ...currentReviews];
+        const totalScore = newReviews.reduce((acc, r) => acc + r.rating, 0);
+        const newAvg = totalScore / newReviews.length;
+
+        // Update mechanic
+        t.update(mechanicRef, {
+            reviews: newReviews,
+            rating: parseFloat(newAvg.toFixed(1))
+        });
+
+        // Mark job as reviewed (optional)
+        const jobRef = db.collection('job_requests').doc(jobId);
+        t.update(jobRef, { hasReview: true });
+    });
+
+    return { success: true };
+});
+
 // --- Notifications ---
 
 exports.sendSms = functions.https.onCall(async (data, context) => {
@@ -167,6 +210,16 @@ exports.sendSms = functions.https.onCall(async (data, context) => {
             from: twilioPhone,
             to: data.phone
         });
+        
+        // Log SMS to Firestore for Admin Panel
+        await db.collection('sms_logs').add({
+            to: data.phone,
+            body: data.message,
+            status: 'sent',
+            sid: 'mock_sid',
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+
         return { success: true };
     } catch (e) {
         console.error("SMS Error", e);

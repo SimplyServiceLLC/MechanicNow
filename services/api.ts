@@ -315,6 +315,46 @@ const RealApi = {
     }
   },
 
+  chat: {
+      subscribe: (jobId: string, callback: (messages: any[]) => void) => {
+          const dbInstance = ensureDb();
+          const q = query(
+              collection(dbInstance, `job_requests/${jobId}/messages`),
+              orderBy('createdAt', 'asc')
+          );
+          return onSnapshot(q, (snapshot) => {
+              const messages = snapshot.docs.map(doc => ({
+                  id: doc.id,
+                  ...convertTimestamps(doc.data())
+              }));
+              callback(messages);
+          });
+      },
+      sendMessage: async (jobId: string, sender: 'customer' | 'mechanic', text: string) => {
+          const dbInstance = ensureDb();
+          await addDoc(collection(dbInstance, `job_requests/${jobId}/messages`), {
+              sender,
+              text,
+              createdAt: serverTimestamp()
+          });
+      }
+  },
+
+  reviews: {
+      submit: async (mechanicId: string, jobId: string, rating: number, text: string) => {
+          const fns = ensureFunctions();
+          const authInstance = ensureAuth();
+          const submitFn = httpsCallable(fns, 'submitReview');
+          await submitFn({
+              mechanicId,
+              jobId,
+              rating,
+              text,
+              authorName: authInstance.currentUser?.displayName || 'User'
+          });
+      }
+  },
+
   storage: {
       uploadFile: async (file: File, path: string) => {
           if (!storage || !auth?.currentUser) throw new Error("Storage unavailable");

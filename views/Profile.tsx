@@ -1,8 +1,9 @@
+
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../App';
-import { Car, Plus, Calendar, Wrench, User, Trash2, Mic, Cloud, Server, Wifi, Edit2, X, MapPin, Phone, Mail, Save, CreditCard } from 'lucide-react';
-import { Navigate, useNavigate } from '../App';
-import { Vehicle, UserProfile } from '../types';
+import { Car, Plus, Calendar, Wrench, User, Trash2, Mic, Cloud, Server, Wifi, Edit2, X, MapPin, Phone, Mail, Save, CreditCard, Star, CheckCircle } from 'lucide-react';
+import { Navigate, useNavigate, useLocation } from '../App';
+import { Vehicle, UserProfile, JobRequest } from '../types';
 import { api } from '../services/api';
 
 // Comprehensive List of Makes (Shared constant)
@@ -17,9 +18,84 @@ const VEHICLE_MAKES = [
 const currentYear = new Date().getFullYear() + 1;
 const VEHICLE_YEARS = Array.from({length: currentYear - 1989}, (_, i) => (currentYear - i).toString());
 
+const ReviewModal = ({ job, onClose }: { job: JobRequest, onClose: () => void }) => {
+    const [rating, setRating] = useState(5);
+    const [text, setText] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const { notify } = useApp();
+
+    const handleSubmit = async () => {
+        setIsSubmitting(true);
+        try {
+            if (!job.mechanicId) return;
+            await api.reviews.submit(job.mechanicId, job.id, rating, text);
+            notify("Review Submitted", "Thank you for your feedback!");
+            onClose();
+        } catch(e) {
+            notify("Error", "Failed to submit review.");
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
+            <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl p-6 animate-scale-up">
+                <div className="text-center mb-6">
+                    <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4 text-green-600">
+                        <CheckCircle size={32} />
+                    </div>
+                    <h2 className="text-2xl font-bold text-slate-900">Job Complete!</h2>
+                    <p className="text-slate-500">How was your service with the mechanic?</p>
+                </div>
+
+                <div className="flex justify-center gap-2 mb-6">
+                    {[1, 2, 3, 4, 5].map(star => (
+                        <button 
+                            key={star}
+                            onClick={() => setRating(star)}
+                            className="transition-transform hover:scale-110 focus:outline-none"
+                        >
+                            <Star 
+                                size={32} 
+                                fill={star <= rating ? "#fbbf24" : "none"} 
+                                className={star <= rating ? "text-amber-400" : "text-slate-300"} 
+                            />
+                        </button>
+                    ))}
+                </div>
+
+                <textarea 
+                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl mb-6 h-32 resize-none outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Write a review (optional)..."
+                    value={text}
+                    onChange={e => setText(e.target.value)}
+                />
+
+                <div className="flex gap-3">
+                    <button 
+                        onClick={onClose} 
+                        className="flex-1 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200"
+                    >
+                        Skip
+                    </button>
+                    <button 
+                        onClick={handleSubmit} 
+                        disabled={isSubmitting}
+                        className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-500 shadow-lg shadow-blue-200"
+                    >
+                        {isSubmitting ? "Submitting..." : "Submit Review"}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 export const Profile: React.FC = () => {
   const { user, addVehicle, updateVehicle, removeVehicle, login } = useApp();
   const navigate = useNavigate();
+  const location = useLocation();
   
   const [isAddingVehicle, setIsAddingVehicle] = useState(false);
   const [editingVehicle, setEditingVehicle] = useState<Vehicle | null>(null);
@@ -37,6 +113,7 @@ export const Profile: React.FC = () => {
   });
   
   const [serverStatus, setServerStatus] = useState({ mode: 'MOCK', provider: 'Local Storage' });
+  const [reviewJob, setReviewJob] = useState<JobRequest | null>(null);
 
   useEffect(() => {
       const status = api.status.getConnectionInfo();
@@ -49,7 +126,15 @@ export const Profile: React.FC = () => {
               address: user.address || ''
           });
       }
-  }, [user]);
+      
+      // Check for pending review passed from navigation
+      const state = location.state as { reviewJob?: JobRequest };
+      if (state?.reviewJob) {
+          setReviewJob(state.reviewJob);
+          // Clear state to prevent re-opening on refresh
+          window.history.replaceState({}, document.title);
+      }
+  }, [user, location]);
 
   if (!user) return <Navigate to="/login" replace />;
 
@@ -78,11 +163,6 @@ export const Profile: React.FC = () => {
         address: profileForm.address
     };
     await api.auth.updateProfile(updatedUser);
-    // Force a context update (simulated via login for this demo architecture)
-    // In a real app, the context would likely subscribe to the user doc or have a dedicated update method
-    // Here, we can rely on the fact that updateProfile in App.tsx usually sets local state if passed through context,
-    // but since we are calling api directly, we might need to refresh. 
-    // However, let's assume the context *should* handle this or we trigger a reload.
     window.location.reload(); 
     setIsEditingProfile(false);
   };
@@ -278,126 +358,3 @@ export const Profile: React.FC = () => {
                             </div>
                         ))}
                     </div>
-                </div>
-
-                {/* Payments Section */}
-                <div>
-                    <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2 mb-4">
-                        <CreditCard size={20} /> Wallet & Payment Methods
-                    </h2>
-                    <div className="bg-white rounded-2xl border border-slate-100 p-6">
-                        <div className="flex items-center gap-4 p-4 border border-slate-200 rounded-xl mb-4 hover:bg-slate-50 cursor-pointer transition-colors">
-                            <div className="w-10 h-6 bg-slate-800 rounded flex items-center justify-center text-white text-[10px] font-bold tracking-wider">VISA</div>
-                            <div className="flex-1">
-                                <p className="text-sm font-bold text-slate-900">Visa ending in 4242</p>
-                                <p className="text-xs text-slate-500">Expires 12/25</p>
-                            </div>
-                            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">Default</span>
-                        </div>
-                        <button className="w-full py-3 border border-dashed border-slate-300 text-slate-500 rounded-xl text-sm font-medium hover:bg-slate-50 transition-colors">
-                            + Add Payment Method
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            {/* Right Column: History */}
-            <div className="space-y-6">
-                <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-                    <Calendar size={20} /> Service History
-                </h2>
-                <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-                    {user.history.length === 0 ? (
-                        <div className="p-8 text-center text-slate-400">
-                            <Wrench className="mx-auto mb-3 opacity-20" size={48} />
-                            <p>No services yet.</p>
-                        </div>
-                    ) : (
-                        <div className="divide-y divide-slate-50">
-                            {user.history.map(record => (
-                                <div key={record.id} className="p-4 hover:bg-slate-50 transition-colors">
-                                    <div className="flex justify-between items-start mb-1">
-                                        <span className="text-xs font-medium text-slate-500">{new Date(record.date).toLocaleDateString()}</span>
-                                        <span className={`text-xs px-2 py-0.5 rounded-full ${record.status === 'COMPLETED' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
-                                            {record.status}
-                                        </span>
-                                    </div>
-                                    <h4 className="font-semibold text-slate-800">{record.services.map(s => s.name).join(', ')}</h4>
-                                    <div className="flex justify-between items-center mt-2">
-                                        <p className="text-xs text-slate-500">{record.vehicle.year} {record.vehicle.model}</p>
-                                        <p className="font-bold text-slate-900">${record.total.toFixed(2)}</p>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
-            </div>
-        </div>
-      </div>
-
-      {/* Edit Vehicle Modal */}
-      {editingVehicle && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fade-in">
-            <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl p-6 animate-scale-up border border-slate-200">
-                <div className="flex justify-between items-center mb-6">
-                    <h3 className="text-xl font-bold text-slate-900">Edit Vehicle</h3>
-                    <button onClick={() => setEditingVehicle(null)} className="p-2 hover:bg-gray-100 rounded-full text-slate-500 hover:text-slate-800"><X size={20} /></button>
-                </div>
-                
-                <form onSubmit={handleUpdateVehicle} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                        <label className="block text-xs font-medium text-slate-500 mb-1">Year</label>
-                        <select 
-                            className="w-full p-2 border border-slate-200 rounded-lg bg-gray-50 text-slate-900"
-                            value={editingVehicle.year} 
-                            onChange={e => setEditingVehicle({...editingVehicle, year: e.target.value})}
-                        >
-                            {VEHICLE_YEARS.map(y => <option key={y} value={y}>{y}</option>)}
-                        </select>
-                    </div>
-                    
-                    <div>
-                        <label className="block text-xs font-medium text-slate-500 mb-1">Make</label>
-                        <select 
-                            className="w-full p-2 border border-slate-200 rounded-lg bg-gray-50 text-slate-900"
-                            value={editingVehicle.make} 
-                            onChange={e => setEditingVehicle({...editingVehicle, make: e.target.value})}
-                        >
-                            {VEHICLE_MAKES.map(m => <option key={m} value={m}>{m}</option>)}
-                        </select>
-                    </div>
-                    
-                    <div className="relative md:col-span-2">
-                        <label className="block text-xs font-medium text-slate-500 mb-1">Model</label>
-                        <input 
-                            placeholder="e.g. Camry, F-150" 
-                            className="w-full p-2 pr-10 border border-slate-200 rounded-lg bg-gray-50 text-slate-900 placeholder:text-slate-400"
-                            value={editingVehicle.model}
-                            onChange={e => setEditingVehicle({...editingVehicle, model: e.target.value})}
-                            required
-                        />
-                    </div>
-                    {/* Simplified edit fields for brevity */}
-                    <div className="md:col-span-2 flex gap-3 pt-4">
-                        <button 
-                            type="button" 
-                            onClick={() => setEditingVehicle(null)} 
-                            className="flex-1 py-3 bg-gray-100 text-slate-700 font-bold rounded-xl hover:bg-gray-200 transition-colors"
-                        >
-                            Cancel
-                        </button>
-                        <button 
-                            type="submit" 
-                            className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-500 shadow-md shadow-blue-200 transition-colors"
-                        >
-                            Save Changes
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-      )}
-    </div>
-  );
-};

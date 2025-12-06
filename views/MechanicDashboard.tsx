@@ -7,14 +7,6 @@ import { JobRequest, JobCompletionDetails, AiDiagnosisResult, MechanicSchedule }
 import { diagnoseCarIssue } from '../services/geminiService';
 import { api } from '../services/api';
 
-// --- TYPES & INTERFACES ---
-interface DashboardChatMessage {
-  id: string;
-  sender: 'mechanic' | 'customer';
-  text: string;
-  timestamp: number;
-}
-
 // --- SUB-COMPONENTS ---
 
 // 1. Dashboard Map (Leaflet)
@@ -129,53 +121,26 @@ const DashboardMap = ({ requests, activeId, onSelect, mechanicLocation }: { requ
 
 // 2. Job Chat Component
 const JobChat = ({ job, onClose }: { job: JobRequest, onClose: () => void }) => {
-    const storageKey = `mn_chat_${job.id}`;
-    const [messages, setMessages] = useState<DashboardChatMessage[]>([]);
+    const [messages, setMessages] = useState<{id: string, sender: string, text: string}[]>([]);
     const [inputText, setInputText] = useState('');
     const [isListening, setIsListening] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-        const load = () => {
-            const saved = localStorage.getItem(storageKey);
-            if (saved) setMessages(JSON.parse(saved));
-        };
-        load();
-        const interval = setInterval(load, 1000); 
-        return () => clearInterval(interval);
-    }, [storageKey]);
+        const unsubscribe = api.chat.subscribe(job.id, (msgs) => setMessages(msgs));
+        return () => unsubscribe();
+    }, [job.id]);
 
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
 
-    const handleSend = (e?: React.FormEvent) => {
+    const handleSend = async (e?: React.FormEvent) => {
         if (e) e.preventDefault();
         if (!inputText.trim()) return;
 
-        const newMsg: DashboardChatMessage = {
-            id: Date.now().toString(),
-            sender: 'mechanic',
-            text: inputText,
-            timestamp: Date.now()
-        };
-
-        const updated = [...messages, newMsg];
-        localStorage.setItem(storageKey, JSON.stringify(updated));
-        setMessages(updated);
+        await api.chat.sendMessage(job.id, 'mechanic', inputText);
         setInputText('');
-
-        setTimeout(() => {
-            const reply: DashboardChatMessage = {
-                id: (Date.now() + 1).toString(),
-                sender: 'customer',
-                text: "Thanks for the update!",
-                timestamp: Date.now()
-            };
-            const withReply = [...updated, reply];
-            localStorage.setItem(storageKey, JSON.stringify(withReply));
-            setMessages(withReply);
-        }, 3000);
     };
 
     const startDictation = () => {
@@ -390,7 +355,7 @@ const CompletionModal = ({ job, onClose, onComplete }: { job: JobRequest, onClos
                             <div className="p-2 bg-white rounded-lg border border-slate-100 shadow-sm"><CreditCard className="text-blue-600" size={20} /></div>
                             <div className="text-left">
                                 <p className={`font-bold text-sm ${paymentMethod === 'CARD' ? 'text-blue-900' : 'text-slate-700'}`}>Charge Card on File</p>
-                                <p className="text-xs text-slate-500">Secure via Stripe Connect</p>
+                                <p className="text-xs text-slate-500">Secured via Stripe Connect</p>
                             </div>
                         </div>
                         {paymentMethod === 'CARD' && <CheckCircle size={20} className="text-blue-600"/>}

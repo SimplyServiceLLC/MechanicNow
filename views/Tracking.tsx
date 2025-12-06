@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState, useRef } from 'react';
 import { useLocation, useNavigate } from '../App';
 import { useApp } from '../App';
@@ -130,49 +131,26 @@ const LiveMap = ({
   return <div ref={mapRef} className="w-full h-full bg-slate-200" />;
 };
 
-// Chat Component
+// Chat Component (Real Firestore)
 const CustomerChat = ({ mechanicName, jobId, onClose }: { mechanicName: string, jobId: string, onClose: () => void }) => {
-    const storageKey = `mn_chat_${jobId}`;
     const [messages, setMessages] = useState<{id: string, sender: 'mechanic' | 'customer', text: string}[]>([]);
     const [inputText, setInputText] = useState('');
     const messagesEndRef = useRef<HTMLDivElement>(null);
   
     useEffect(() => {
-        // Initial load
-        const saved = localStorage.getItem(storageKey);
-        if (saved) setMessages(JSON.parse(saved));
-  
-        // Poll for updates (Simulating real-time socket)
-        const interval = setInterval(() => {
-            const current = localStorage.getItem(storageKey);
-            if (current) {
-                const parsed = JSON.parse(current);
-                if (parsed.length !== messages.length) {
-                    setMessages(parsed);
-                }
-            }
-        }, 1000);
-        return () => clearInterval(interval);
-    }, [storageKey]);
+        const unsubscribe = api.chat.subscribe(jobId, (msgs) => setMessages(msgs));
+        return () => unsubscribe();
+    }, [jobId]);
   
     useEffect(() => {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
   
-    const handleSend = (e: React.FormEvent) => {
+    const handleSend = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!inputText.trim()) return;
         
-        const newMsg = { 
-            id: Date.now().toString(), 
-            sender: 'customer' as const, 
-            text: inputText, 
-            timestamp: Date.now() 
-        };
-        
-        const updatedMessages = [...messages, newMsg];
-        setMessages(updatedMessages);
-        localStorage.setItem(storageKey, JSON.stringify(updatedMessages));
+        await api.chat.sendMessage(jobId, 'customer', inputText);
         setInputText('');
     };
   
@@ -524,7 +502,10 @@ export const Tracking: React.FC = () => {
 
                         {status === BookingStatus.COMPLETED ? (
                              <div className="p-4 bg-white">
-                                <button onClick={() => navigate('/profile')} className="w-full py-4 bg-green-600 text-white font-bold rounded-xl hover:bg-green-500 transition-all shadow-lg shadow-green-200">
+                                <button 
+                                    onClick={() => navigate('/profile', { state: { reviewJob: bookingData } })} 
+                                    className="w-full py-4 bg-green-600 text-white font-bold rounded-xl hover:bg-green-500 transition-all shadow-lg shadow-green-200"
+                                >
                                     Rate & Pay ${bookingData.totalPrice}
                                 </button>
                              </div>

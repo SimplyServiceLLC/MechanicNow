@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../App';
 import { useNavigate, Navigate } from '../App';
-import { LayoutDashboard, Users, Wrench, FileText, CheckCircle, XCircle, TrendingUp, DollarSign, Activity, Calendar, ExternalLink, ShieldCheck, Eye, X, Briefcase, Filter, RotateCcw, ArrowUpDown, ArrowLeft } from 'lucide-react';
+import { LayoutDashboard, Users, Wrench, FileText, CheckCircle, XCircle, TrendingUp, DollarSign, Activity, Calendar, ExternalLink, ShieldCheck, Eye, X, Briefcase, Filter, RotateCcw, ArrowUpDown, ArrowLeft, Star } from 'lucide-react';
 import { api } from '../services/api';
 import { Mechanic, JobRequest } from '../types';
 
@@ -56,6 +56,42 @@ export const AdminDashboard: React.FC = () => {
     }
     setSortConfig({ key, direction });
   };
+
+  const sortedMechanics = useMemo(() => {
+    let result = [...mechanics];
+    
+    return result.sort((a, b) => {
+        let aValue: any = '';
+        let bValue: any = '';
+
+        switch (sortConfig.key) {
+            case 'name':
+                aValue = a.name.toLowerCase();
+                bValue = b.name.toLowerCase();
+                break;
+            case 'specialties':
+                aValue = (a.specialties || []).join(', ').toLowerCase();
+                bValue = (b.specialties || []).join(', ').toLowerCase();
+                break;
+            case 'yearsExperience':
+                aValue = a.yearsExperience || 0;
+                bValue = b.yearsExperience || 0;
+                break;
+            case 'rating':
+                aValue = a.rating || 0;
+                bValue = b.rating || 0;
+                break;
+            default:
+                // Fallback sort by verified status (pending first) then name
+                if (a.verified === b.verified) return 0;
+                return a.verified ? 1 : -1;
+        }
+
+        if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
+        if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
+        return 0;
+    });
+  }, [mechanics, sortConfig]);
 
   const sortedJobs = useMemo(() => {
     // 1. Filter
@@ -228,68 +264,98 @@ export const AdminDashboard: React.FC = () => {
 
             {activeTab === 'mechanics' && (
                 <div className="animate-fade-in space-y-6">
-                    <h2 className="text-2xl font-bold text-slate-900 hidden md:block">Mechanic Applications</h2>
+                    <h2 className="text-2xl font-bold text-slate-900 hidden md:block">Registered Mechanics</h2>
                     <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-                        {mechanics.length === 0 ? (
-                            <div className="p-8 text-center text-slate-500">No mechanics found.</div>
-                        ) : (
-                            <div className="divide-y divide-slate-100">
-                                {mechanics.map(mech => (
-                                    <div key={mech.id} className="p-6 flex flex-col md:flex-row items-center justify-between gap-4 hover:bg-slate-50 transition-colors">
-                                        <div className="flex items-center gap-4 w-full md:w-auto md:flex-1">
-                                            <img src={mech.avatar} className="w-12 h-12 rounded-full bg-slate-200 object-cover" />
-                                            <div>
-                                                <h4 
-                                                    onClick={() => setReviewingMechanic(mech)}
-                                                    className="font-bold text-slate-900 hover:text-blue-600 hover:underline cursor-pointer transition-colors"
-                                                >
-                                                    {mech.name}
-                                                </h4>
-                                                <div className="flex items-center gap-2 text-xs text-slate-500">
-                                                    <span>{mech.yearsExperience} Years Exp.</span>
-                                                    {mech.verified ? (
-                                                        <span className="text-green-600 font-bold flex items-center gap-1"><CheckCircle size={10} /> Verified</span>
-                                                    ) : (
-                                                        <span className="text-amber-500 font-bold flex items-center gap-1"><XCircle size={10} /> Pending</span>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </div>
-                                        
-                                        <div className="flex items-center justify-start md:justify-center gap-8 w-full md:w-auto md:px-8">
-                                            <div>
-                                                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Status</div>
-                                                <div className={`text-sm font-bold flex items-center gap-2 ${mech.availability === 'Available Now' ? 'text-green-600' : 'text-slate-500'}`}>
-                                                    <div className={`w-2 h-2 rounded-full ${mech.availability === 'Available Now' ? 'bg-green-500' : 'bg-slate-400'}`}></div>
-                                                    {mech.availability || 'Offline'}
-                                                </div>
-                                            </div>
-                                            <div>
-                                                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Jobs Done</div>
-                                                <div className="text-sm font-bold text-slate-900">{mech.jobsCompleted || 0}</div>
-                                            </div>
-                                        </div>
-
-                                        <div className="flex gap-2 w-full md:w-auto">
-                                            <button 
-                                                onClick={() => setReviewingMechanic(mech)}
-                                                className="flex-1 md:flex-none px-4 py-2 border border-slate-200 rounded-lg text-sm font-bold text-slate-600 hover:bg-white transition-colors"
-                                            >
-                                                {mech.verified ? 'View Profile' : 'Review App'}
-                                            </button>
-                                            {!mech.verified && (
-                                                <button 
-                                                    onClick={() => handleApproveMechanic(mech.id)}
-                                                    className="flex-1 md:flex-none px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-500 transition-colors"
-                                                >
-                                                    Approve
-                                                </button>
-                                            )}
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left">
+                                <thead className="bg-slate-50 border-b border-slate-100">
+                                    <tr>
+                                        <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100" onClick={() => handleSort('name')}>
+                                            <div className="flex items-center gap-1">Mechanic Name <ArrowUpDown size={12}/></div>
+                                        </th>
+                                        <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100" onClick={() => handleSort('specialties')}>
+                                            <div className="flex items-center gap-1">Specialties <ArrowUpDown size={12}/></div>
+                                        </th>
+                                        <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100" onClick={() => handleSort('yearsExperience')}>
+                                            <div className="flex items-center gap-1">Experience <ArrowUpDown size={12}/></div>
+                                        </th>
+                                        <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100" onClick={() => handleSort('rating')}>
+                                            <div className="flex items-center gap-1">Rating <ArrowUpDown size={12}/></div>
+                                        </th>
+                                        <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Status</th>
+                                        <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-50 text-sm">
+                                    {sortedMechanics.length === 0 ? (
+                                        <tr><td colSpan={6} className="p-8 text-center text-slate-500">No mechanics found.</td></tr>
+                                    ) : (
+                                        sortedMechanics.map(mech => (
+                                            <tr key={mech.id} className="hover:bg-slate-50 transition-colors">
+                                                <td className="p-4">
+                                                    <div className="flex items-center gap-3">
+                                                        <img src={mech.avatar} className="w-8 h-8 rounded-full bg-slate-200 object-cover" />
+                                                        <div 
+                                                            onClick={() => setReviewingMechanic(mech)}
+                                                            className="font-bold text-slate-900 cursor-pointer hover:text-blue-600 hover:underline"
+                                                        >
+                                                            {mech.name}
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td className="p-4">
+                                                    <div className="flex flex-wrap gap-1">
+                                                        {(mech.specialties || []).slice(0, 2).map(s => (
+                                                            <span key={s} className="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs rounded border border-slate-200">{s}</span>
+                                                        ))}
+                                                        {(mech.specialties || []).length > 2 && <span className="text-xs text-slate-400">+{mech.specialties!.length - 2} more</span>}
+                                                    </div>
+                                                </td>
+                                                <td className="p-4 text-slate-600 font-medium">
+                                                    {mech.yearsExperience} Years
+                                                </td>
+                                                <td className="p-4">
+                                                    <div className="flex items-center gap-1 font-bold text-slate-700">
+                                                        <Star size={14} className="text-amber-400 fill-amber-400" />
+                                                        {mech.rating.toFixed(1)}
+                                                    </div>
+                                                </td>
+                                                <td className="p-4">
+                                                    <div className="flex flex-col gap-1">
+                                                        {mech.verified ? (
+                                                            <span className="text-green-600 font-bold flex items-center gap-1 text-xs"><CheckCircle size={12} /> Verified</span>
+                                                        ) : (
+                                                            <span className="text-amber-500 font-bold flex items-center gap-1 text-xs"><XCircle size={12} /> Pending</span>
+                                                        )}
+                                                        <span className={`text-xs ${mech.availability === 'Available Now' ? 'text-green-600' : 'text-slate-400'}`}>
+                                                            {mech.availability || 'Offline'}
+                                                        </span>
+                                                    </div>
+                                                </td>
+                                                <td className="p-4">
+                                                    <div className="flex gap-2">
+                                                        <button 
+                                                            onClick={() => setReviewingMechanic(mech)}
+                                                            className="px-3 py-1.5 border border-slate-200 rounded-lg text-xs font-bold text-slate-600 hover:bg-white hover:border-slate-300 transition-colors"
+                                                        >
+                                                            {mech.verified ? 'View' : 'Review'}
+                                                        </button>
+                                                        {!mech.verified && (
+                                                            <button 
+                                                                onClick={() => handleApproveMechanic(mech.id)}
+                                                                className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-500 transition-colors"
+                                                            >
+                                                                Approve
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             )}
@@ -468,4 +534,49 @@ export const AdminDashboard: React.FC = () => {
                             <div>
                                 <h4 className="font-bold text-slate-800 text-sm mb-2">Submitted Documents</h4>
                                 <div className="space-y-2">
-                                    <div className="flex items-center justify-between p
+                                    <div className="flex items-center justify-between p-3 border border-slate-200 rounded-lg hover:bg-slate-50">
+                                        <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                                            <FileText size={16} className="text-blue-500" /> Driver's License
+                                        </div>
+                                        <button className="text-xs font-bold text-blue-600 flex items-center gap-1 hover:underline"><Eye size={12}/> View</button>
+                                    </div>
+                                    <div className="flex items-center justify-between p-3 border border-slate-200 rounded-lg hover:bg-slate-50">
+                                        <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                                            <FileText size={16} className="text-blue-500" /> Insurance Policy
+                                        </div>
+                                        <button className="text-xs font-bold text-blue-600 flex items-center gap-1 hover:underline"><Eye size={12}/> View</button>
+                                    </div>
+                                     <div className="flex items-center justify-between p-3 border border-slate-200 rounded-lg hover:bg-slate-50">
+                                        <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                                            <ShieldCheck size={16} className="text-green-500" /> Background Check
+                                        </div>
+                                        <span className="text-xs font-bold text-green-600 bg-green-100 px-2 py-1 rounded">Passed</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="p-4 border-t border-slate-100 flex gap-3 bg-slate-50">
+                        <button 
+                            onClick={() => setReviewingMechanic(null)}
+                            className="flex-1 py-3 bg-white border border-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-100"
+                        >
+                            Close
+                        </button>
+                        {!reviewingMechanic.verified && (
+                            <button 
+                                onClick={() => handleApproveMechanic(reviewingMechanic.id)}
+                                className="flex-1 py-3 bg-green-600 text-white font-bold rounded-xl hover:bg-green-500 shadow-lg shadow-green-200"
+                            >
+                                Approve Mechanic
+                            </button>
+                        )}
+                    </div>
+                </div>
+            </div>
+        )}
+
+    </div>
+  );
+};

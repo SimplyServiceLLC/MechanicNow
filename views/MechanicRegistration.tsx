@@ -1,7 +1,5 @@
-
-
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from '../App';
 import { useApp } from '../App';
 import { Wrench, User, Mail, Lock, Phone as PhoneIcon, Upload, CheckCircle, ChevronRight, ArrowLeft, ShieldCheck, MapPin, Briefcase, Award, Loader2, FileText, AlertTriangle, Camera, Clock } from 'lucide-react';
 import { api } from '../services/api';

@@ -1,7 +1,6 @@
-
 import React from 'react';
 import { ArrowLeft, Shield, Scale, FileText, AlertTriangle } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from '../App';
 
 export const Terms: React.FC = () => {
   const navigate = useNavigate();
