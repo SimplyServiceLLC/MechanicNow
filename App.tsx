@@ -225,167 +225,168 @@ const Layout = ({ children }: { children?: React.ReactNode }) => {
   const navigate = useNavigate();
   const { user, logout } = useApp();
 
-  // Determine if we should show the simplified "app-like" header or the landing header
+  // "Standalone" modes where we hide the global website header to provide an immersive dashboard
+  const isStandaloneMode = location.pathname.includes('mechanic-dashboard') || location.pathname.includes('admin');
   const isAppView = location.pathname !== '/';
-
-  // Specific check for Mechanic or Admin views to change header context
-  const isPartnerView = location.pathname.includes('mechanic-dashboard') || location.pathname.includes('admin');
   const isLoginView = location.pathname === '/login';
 
   // Should we show the Customer Bottom Nav?
-  const showCustomerNav = user && !user.isMechanic && !user.isAdmin && !isPartnerView && !isLoginView;
+  const showCustomerNav = user && !user.isMechanic && !user.isAdmin && !isStandaloneMode && !isLoginView;
 
   if (isLoginView) return <>{children}</>;
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50 font-sans text-slate-800 pb-[env(safe-area-inset-bottom)]">
-      <header 
-        className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 pt-[env(safe-area-inset-top)] ${isAppView || isPartnerView ? 'bg-white/95 backdrop-blur-md shadow-sm border-b border-gray-100' : 'bg-transparent'}`}
-      >
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-4">
-            {/* Logo */}
-            <div 
-              className="flex items-center cursor-pointer" 
-              onClick={() => navigate(user?.isMechanic && isPartnerView ? '/mechanic-dashboard' : '/')}
-            >
-              <div className={`p-2 rounded-lg mr-2 ${isAppView || isPartnerView ? (isPartnerView ? 'bg-slate-900 text-white' : 'bg-blue-600 text-white') : 'bg-white text-blue-600'}`}>
-                {isPartnerView ? <LayoutDashboard size={20}/> : <Wrench size={20} />}
+      
+      {/* GLOBAL HEADER - Only shown for Customers and Landing Page */}
+      {!isStandaloneMode && (
+        <header 
+          className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 pt-[env(safe-area-inset-top)] ${isAppView ? 'bg-white/95 backdrop-blur-md shadow-sm border-b border-gray-100' : 'bg-transparent'}`}
+        >
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex justify-between items-center py-4">
+              {/* Logo */}
+              <div 
+                className="flex items-center cursor-pointer" 
+                onClick={() => navigate('/')}
+              >
+                <div className={`p-2 rounded-lg mr-2 ${isAppView ? 'bg-blue-600 text-white' : 'bg-white text-blue-600'}`}>
+                  <Wrench size={20} />
+                </div>
+                <span className={`text-xl font-bold tracking-tight ${isAppView ? 'text-slate-900' : 'text-white'}`}>
+                  MechanicNow
+                </span>
               </div>
-              <span className={`text-xl font-bold tracking-tight ${isAppView || isPartnerView ? 'text-slate-900' : 'text-white'}`}>
-                MechanicNow <span className={`text-xs font-bold uppercase px-2 py-0.5 rounded ml-1 ${isPartnerView ? 'bg-slate-100 text-slate-600' : 'hidden'}`}>{isPartnerView ? 'Partner' : ''}</span>
-              </span>
-            </div>
 
-            {/* Desktop Nav */}
-            <nav className="hidden md:flex items-center space-x-8">
-              {!user && ['How it Works', 'Services', 'Mechanics'].map((item) => (
-                <a 
-                  key={item} 
-                  href="#" 
-                  className={`text-sm font-medium hover:opacity-75 ${isAppView ? 'text-slate-600' : 'text-white'}`}
-                >
-                  {item}
-                </a>
-              ))}
-              
-              {user ? (
-                <div className="flex items-center gap-4">
-                   {user.isAdmin && !isPartnerView && (
-                        <button 
-                            onClick={() => navigate('/admin')}
-                            className="flex items-center gap-2 text-sm font-bold px-3 py-2 rounded-full bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors"
-                        >
-                            <ShieldCheck size={16} /> Admin Panel
-                        </button>
-                   )}
-                   
-                   {/* Mechanic Switcher Logic */}
-                   {user.isMechanic && (
-                       <button
-                           onClick={() => navigate(isPartnerView ? '/' : '/mechanic-dashboard')}
-                           className={`flex items-center gap-2 text-sm font-bold px-4 py-2 rounded-full transition-all border ${isPartnerView ? 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50' : (isAppView ? 'border-blue-100 bg-blue-50 text-blue-700 hover:bg-blue-100' : 'bg-white/10 text-white border-transparent hover:bg-white/20')}`}
-                       >
-                           {isPartnerView ? <><User size={16}/> Customer App</> : <><LayoutDashboard size={16}/> Dashboard</>}
-                       </button>
-                   )}
-
-                   <button 
-                    onClick={() => navigate('/profile')}
-                    className={`flex items-center gap-2 text-sm font-medium px-3 py-2 rounded-full transition-colors ${isAppView || isPartnerView ? 'hover:bg-slate-100 text-slate-700' : 'bg-white/10 text-white hover:bg-white/20'}`}
+              {/* Desktop Nav */}
+              <nav className="hidden md:flex items-center space-x-8">
+                {!user && ['How it Works', 'Services', 'Mechanics'].map((item) => (
+                  <a 
+                    key={item} 
+                    href="#" 
+                    className={`text-sm font-medium hover:opacity-75 ${isAppView ? 'text-slate-600' : 'text-white'}`}
                   >
-                    <img src={user.avatar} alt="Avatar" className="w-8 h-8 rounded-full border border-gray-200" />
-                    <span className="hidden lg:inline">{user.name}</span>
-                  </button>
-                  <button 
-                    onClick={logout}
-                    className={`text-sm font-medium ${isAppView || isPartnerView ? 'text-red-500 hover:text-red-600' : 'text-white/80 hover:text-white'}`}
-                  >
-                    Sign Out
-                  </button>
-                </div>
-              ) : (
-                <button 
-                  onClick={() => navigate('/login')}
-                  className={`text-sm font-medium px-5 py-2.5 rounded-full transition-all font-bold ${isAppView ? 'bg-slate-900 text-white hover:bg-slate-800 shadow-lg shadow-slate-200' : 'bg-white text-blue-900 hover:bg-gray-100'}`}
-                >
-                  Sign In
-                </button>
-              )}
-            </nav>
-
-            {/* Mobile Menu Button - Hide if logged in Customer since they have Bottom Nav */}
-            {!showCustomerNav && (
-                <button 
-                className="md:hidden p-2"
-                onClick={() => setIsMenuOpen(!isMenuOpen)}
-                >
-                {isMenuOpen ? 
-                    <X className={isAppView || isPartnerView ? 'text-slate-900' : 'text-white'} /> : 
-                    <Menu className={isAppView || isPartnerView ? 'text-slate-900' : 'text-white'} />
-                }
-                </button>
-            )}
-          </div>
-        </div>
-
-        {/* Mobile Menu Overlay */}
-        {isMenuOpen && !showCustomerNav && (
-          <div className="absolute top-full left-0 right-0 bg-white shadow-xl md:hidden p-4 flex flex-col space-y-2 text-slate-800 animate-fade-in border-t border-gray-100 h-screen">
-            {user ? (
-              <>
-                <div className="flex items-center gap-3 p-4 bg-slate-50 rounded-2xl mb-2">
-                  <img src={user.avatar} alt="Avatar" className="w-12 h-12 rounded-full bg-white border border-slate-100" />
-                  <div>
-                    <p className="font-bold text-lg">{user.name}</p>
-                    <p className="text-xs text-slate-500">{user.email}</p>
-                  </div>
-                </div>
-
-                {user.isAdmin && (
-                    <button onClick={() => { navigate('/admin'); setIsMenuOpen(false); }} className="p-4 text-left bg-slate-100 rounded-xl font-bold text-slate-900 flex items-center gap-3">
-                        <ShieldCheck size={20} className="text-blue-600"/> Admin Panel
-                    </button>
-                )}
-
-                <div className="space-y-1">
-                    <button onClick={() => { navigate('/profile'); setIsMenuOpen(false); }} className="w-full p-4 text-left hover:bg-gray-50 rounded-xl flex items-center gap-3 font-medium text-slate-700">
-                        <User size={20} className="text-slate-400"/> My Profile
-                    </button>
-                </div>
-
-                {(user.isMechanic || user.isAdmin) && (
-                    <div className="space-y-1 pt-4 mt-2">
-                        <p className="text-xs font-bold text-slate-400 uppercase tracking-wider pl-4 mb-2">Partner</p>
-                        <button onClick={() => { navigate('/mechanic-dashboard'); setIsMenuOpen(false); }} className="w-full p-4 text-left hover:bg-blue-50 bg-blue-50/50 text-blue-700 rounded-xl flex items-center gap-3 font-bold border border-blue-100">
-                            <Briefcase size={20} className="text-blue-600"/> Mechanic Dashboard
-                        </button>
-                    </div>
-                )}
+                    {item}
+                  </a>
+                ))}
                 
-                <div className="mt-auto pb-8 pt-4">
-                     <button onClick={() => { logout(); setIsMenuOpen(false); }} className="w-full p-4 text-center text-red-500 font-bold bg-red-50 rounded-xl">Sign Out</button>
-                </div>
-              </>
-            ) : (
-              <div className="space-y-4 pt-4">
-                <a href="#" className="block p-4 hover:bg-gray-50 rounded-xl font-bold text-xl">How it Works</a>
-                <a href="#" className="block p-4 hover:bg-gray-50 rounded-xl font-bold text-xl">Services</a>
-                <hr className="border-gray-100"/>
-                <button onClick={() => { navigate('/register-mechanic'); setIsMenuOpen(false); }} className="w-full p-4 text-left hover:bg-blue-50 text-blue-600 font-bold rounded-xl bg-blue-50/50 flex items-center gap-2">
-                    <Briefcase size={20}/> Join as Mechanic
-                </button>
-                <button onClick={() => { navigate('/login'); setIsMenuOpen(false); }} className="w-full p-4 text-center bg-slate-900 text-white rounded-xl font-bold text-lg shadow-xl">
-                    Sign In
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-      </header>
+                {user ? (
+                  <div className="flex items-center gap-4">
+                     {user.isAdmin && (
+                          <button 
+                              onClick={() => navigate('/admin')}
+                              className="flex items-center gap-2 text-sm font-bold px-3 py-2 rounded-full bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors"
+                          >
+                              <ShieldCheck size={16} /> Admin Panel
+                          </button>
+                     )}
+                     
+                     {user.isMechanic && (
+                         <button
+                             onClick={() => navigate('/mechanic-dashboard')}
+                             className="flex items-center gap-2 text-sm font-bold px-4 py-2 rounded-full transition-all border border-blue-100 bg-blue-50 text-blue-700 hover:bg-blue-100"
+                         >
+                             <LayoutDashboard size={16}/> Partner Dashboard
+                         </button>
+                     )}
 
-      {/* Main Content with padding to account for fixed header + safe area */}
-      <main className={`flex-grow pt-[calc(72px+env(safe-area-inset-top))] ${showCustomerNav ? 'pb-20' : ''}`}>
+                     <button 
+                      onClick={() => navigate('/profile')}
+                      className={`flex items-center gap-2 text-sm font-medium px-3 py-2 rounded-full transition-colors ${isAppView ? 'hover:bg-slate-100 text-slate-700' : 'bg-white/10 text-white hover:bg-white/20'}`}
+                    >
+                      <img src={user.avatar} alt="Avatar" className="w-8 h-8 rounded-full border border-gray-200" />
+                      <span className="hidden lg:inline">{user.name}</span>
+                    </button>
+                    <button 
+                      onClick={logout}
+                      className={`text-sm font-medium ${isAppView ? 'text-red-500 hover:text-red-600' : 'text-white/80 hover:text-white'}`}
+                    >
+                      Sign Out
+                    </button>
+                  </div>
+                ) : (
+                  <button 
+                    onClick={() => navigate('/login')}
+                    className={`text-sm font-medium px-5 py-2.5 rounded-full transition-all font-bold ${isAppView ? 'bg-slate-900 text-white hover:bg-slate-800 shadow-lg shadow-slate-200' : 'bg-white text-blue-900 hover:bg-gray-100'}`}
+                  >
+                    Sign In
+                  </button>
+                )}
+              </nav>
+
+              {/* Mobile Menu Button */}
+              {!showCustomerNav && (
+                  <button 
+                  className="md:hidden p-2"
+                  onClick={() => setIsMenuOpen(!isMenuOpen)}
+                  >
+                  {isMenuOpen ? 
+                      <X className={isAppView ? 'text-slate-900' : 'text-white'} /> : 
+                      <Menu className={isAppView ? 'text-slate-900' : 'text-white'} />
+                  }
+                  </button>
+              )}
+            </div>
+          </div>
+
+          {/* Mobile Menu Overlay */}
+          {isMenuOpen && !showCustomerNav && (
+            <div className="absolute top-full left-0 right-0 bg-white shadow-xl md:hidden p-4 flex flex-col space-y-2 text-slate-800 animate-fade-in border-t border-gray-100 h-screen">
+              {user ? (
+                <>
+                  <div className="flex items-center gap-3 p-4 bg-slate-50 rounded-2xl mb-2">
+                    <img src={user.avatar} alt="Avatar" className="w-12 h-12 rounded-full bg-white border border-slate-100" />
+                    <div>
+                      <p className="font-bold text-lg">{user.name}</p>
+                      <p className="text-xs text-slate-500">{user.email}</p>
+                    </div>
+                  </div>
+
+                  {user.isAdmin && (
+                      <button onClick={() => { navigate('/admin'); setIsMenuOpen(false); }} className="p-4 text-left bg-slate-100 rounded-xl font-bold text-slate-900 flex items-center gap-3">
+                          <ShieldCheck size={20} className="text-blue-600"/> Admin Panel
+                      </button>
+                  )}
+
+                  <div className="space-y-1">
+                      <button onClick={() => { navigate('/profile'); setIsMenuOpen(false); }} className="w-full p-4 text-left hover:bg-gray-50 rounded-xl flex items-center gap-3 font-medium text-slate-700">
+                          <User size={20} className="text-slate-400"/> My Profile
+                      </button>
+                  </div>
+
+                  {(user.isMechanic || user.isAdmin) && (
+                      <div className="space-y-1 pt-4 mt-2">
+                          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider pl-4 mb-2">Partner</p>
+                          <button onClick={() => { navigate('/mechanic-dashboard'); setIsMenuOpen(false); }} className="w-full p-4 text-left hover:bg-blue-50 bg-blue-50/50 text-blue-700 rounded-xl flex items-center gap-3 font-bold border border-blue-100">
+                              <Briefcase size={20} className="text-blue-600"/> Mechanic Dashboard
+                          </button>
+                      </div>
+                  )}
+                  
+                  <div className="mt-auto pb-8 pt-4">
+                       <button onClick={() => { logout(); setIsMenuOpen(false); }} className="w-full p-4 text-center text-red-500 font-bold bg-red-50 rounded-xl">Sign Out</button>
+                  </div>
+                </>
+              ) : (
+                <div className="space-y-4 pt-4">
+                  <a href="#" className="block p-4 hover:bg-gray-50 rounded-xl font-bold text-xl">How it Works</a>
+                  <a href="#" className="block p-4 hover:bg-gray-50 rounded-xl font-bold text-xl">Services</a>
+                  <hr className="border-gray-100"/>
+                  <button onClick={() => { navigate('/register-mechanic'); setIsMenuOpen(false); }} className="w-full p-4 text-left hover:bg-blue-50 text-blue-600 font-bold rounded-xl bg-blue-50/50 flex items-center gap-2">
+                      <Briefcase size={20}/> Join as Mechanic
+                  </button>
+                  <button onClick={() => { navigate('/login'); setIsMenuOpen(false); }} className="w-full p-4 text-center bg-slate-900 text-white rounded-xl font-bold text-lg shadow-xl">
+                      Sign In
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </header>
+      )}
+
+      {/* Main Content with padding ONLY if header is present */}
+      <main className={`flex-grow ${!isStandaloneMode ? 'pt-[calc(72px+env(safe-area-inset-top))]' : ''} ${showCustomerNav ? 'pb-20' : ''}`}>
         {children}
       </main>
 

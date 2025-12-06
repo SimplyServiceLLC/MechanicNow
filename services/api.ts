@@ -1,5 +1,4 @@
 
-
 import { UserProfile, JobRequest, PaymentMethod, Mechanic, MechanicRegistrationData } from '../types';
 import * as firebaseApp from 'firebase/app';
 import * as firebaseAuth from 'firebase/auth';
@@ -11,16 +10,34 @@ import {
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 
-// --- FIREBASE CONFIGURATION ---
-// Ensure these are set in your .env file for Production
+// --- CONFIGURATION ---
+
+// Whitelist of emails that automatically get Admin Access
+const ADMIN_EMAILS = ['admin@mechanicnow.com', 'owner@mechanicnow.com', 'simply757@gmail.com'];
+
+// Helper to safely get Env Variables in both Vite and Standard environments
+const getEnv = (key: string) => {
+    // Check for Vite's import.meta.env
+    // @ts-ignore
+    if (typeof import.meta !== 'undefined' && import.meta.env) {
+        // @ts-ignore
+        return import.meta.env[`VITE_${key}`] || import.meta.env[key];
+    }
+    // Check for standard process.env
+    if (typeof process !== 'undefined' && process.env) {
+        return process.env[`VITE_${key}`] || process.env[key];
+    }
+    return '';
+};
+
 const firebaseConfig = {
-  apiKey: process.env.FIREBASE_API_KEY, 
-  authDomain: process.env.FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.FIREBASE_PROJECT_ID,
-  storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.FIREBASE_APP_ID,
-  measurementId: process.env.FIREBASE_MEASUREMENT_ID
+  apiKey: getEnv('FIREBASE_API_KEY'), 
+  authDomain: getEnv('FIREBASE_AUTH_DOMAIN'),
+  projectId: getEnv('FIREBASE_PROJECT_ID'),
+  storageBucket: getEnv('FIREBASE_STORAGE_BUCKET'),
+  messagingSenderId: getEnv('FIREBASE_MESSAGING_SENDER_ID'),
+  appId: getEnv('FIREBASE_APP_ID'),
+  measurementId: getEnv('FIREBASE_MEASUREMENT_ID')
 };
 
 let db: any = null;
@@ -29,8 +46,7 @@ let storage: any = null;
 let functions: any = null;
 
 try {
-  // Check if config is populated
-  const hasConfig = Object.values(firebaseConfig).some(v => v !== undefined && v !== '');
+  const hasConfig = !!firebaseConfig.apiKey;
   
   if (hasConfig) {
       const app = (firebaseApp as any).initializeApp 
@@ -42,17 +58,9 @@ try {
       storage = getStorage(app);
       functions = getFunctions(app);
       
-      if (typeof window !== 'undefined') {
-          import('firebase/analytics').then((analyticsMod: any) => {
-            const getAnalytics = analyticsMod.getAnalytics || analyticsMod.default?.getAnalytics;
-            if (getAnalytics) {
-              try { getAnalytics(app); } catch (e) { console.warn("Analytics failed to load", e); }
-            }
-          });
-      }
-      console.log(`✅ [MechanicNow] Connected to Google Cloud: ${firebaseConfig.projectId}`);
+      console.log(`✅ [MechanicNow] Connected to Firebase Project: ${firebaseConfig.projectId}`);
   } else {
-      console.warn("⚠️ Firebase Config missing. App running in detached mode. Add API Keys to .env to connect.");
+      console.warn("⚠️ Firebase Config missing. Please add VITE_FIREBASE_API_KEY to your .env file.");
   }
 
 } catch (e) {
@@ -64,7 +72,6 @@ const convertTimestamps = (data: any): any => {
     if (!data) return data;
     if (typeof data !== 'object') return data;
     
-    // Check for Firestore Timestamp (seconds, nanoseconds)
     if (data.seconds !== undefined && data.nanoseconds !== undefined) {
         return new Date(data.seconds * 1000).toISOString();
     }
@@ -80,19 +87,24 @@ const convertTimestamps = (data: any): any => {
     return newData;
 };
 
-const mapUser = (user: any, data?: any): UserProfile => ({
-  id: user.uid,
-  name: user.displayName || data?.name || 'User',
-  email: user.email || '',
-  avatar: user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.displayName || data?.name || 'User')}&background=0D8ABC&color=fff`,
-  phone: data?.phone,
-  address: data?.address,
-  bio: data?.bio,
-  isMechanic: data?.isMechanic,
-  isAdmin: data?.isAdmin,
-  vehicles: data?.vehicles || [],
-  history: convertTimestamps(data?.history || [])
-});
+const mapUser = (user: any, data?: any): UserProfile => {
+  const email = user.email || '';
+  const isAdmin = data?.isAdmin || ADMIN_EMAILS.includes(email);
+  
+  return {
+      id: user.uid,
+      name: user.displayName || data?.name || 'User',
+      email: email,
+      avatar: user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.displayName || data?.name || 'User')}&background=0D8ABC&color=fff`,
+      phone: data?.phone,
+      address: data?.address,
+      bio: data?.bio,
+      isMechanic: data?.isMechanic,
+      isAdmin: isAdmin,
+      vehicles: data?.vehicles || [],
+      history: convertTimestamps(data?.history || [])
+  };
+};
 
 // Helper guards
 const ensureAuth = () => { if (!auth) throw new Error("Firebase Auth not initialized. Check .env keys."); return auth; };
@@ -108,8 +120,8 @@ const RealApi = {
       if (!password) throw new Error("Password is required.");
       
       let user: any;
+      const dbInstance = ensureDb();
       
-      // Handle imports dynamically for shim compatibility
       const signIn = firebaseAuth.signInWithEmailAndPassword || (firebaseAuth as any).default.signInWithEmailAndPassword;
       const createUser = firebaseAuth.createUserWithEmailAndPassword || (firebaseAuth as any).default.createUserWithEmailAndPassword;
       const updateProfileFn = firebaseAuth.updateProfile || (firebaseAuth as any).default.updateProfile;
@@ -118,17 +130,21 @@ const RealApi = {
         const cred = await signIn(authInstance, email, password);
         user = cred.user;
       } catch (e: any) {
+        // Auto-register if user not found (Legacy behavior support)
         if (e.code === 'auth/user-not-found' || e.code === 'auth/invalid-credential' || e.code === 'auth/invalid-login-credentials' || e.code === 'auth/invalid-email') {
              try {
                  const cred = await createUser(authInstance, email, password);
                  user = cred.user;
                  await updateProfileFn(user, { displayName: name });
-                 await setDoc(doc(ensureDb(), 'users', user.uid), { 
+                 
+                 // Initial User Doc
+                 await setDoc(doc(dbInstance, 'users', user.uid), { 
                      name: name || email.split('@')[0], 
                      email, 
                      vehicles: [], 
                      history: [], 
                      isMechanic: false,
+                     isAdmin: ADMIN_EMAILS.includes(email), // Auto-set Admin in DB
                      createdAt: serverTimestamp() 
                 });
              } catch (regError: any) {
@@ -143,9 +159,37 @@ const RealApi = {
       }
       
       try {
-        const userDoc = await getDoc(doc(ensureDb(), 'users', user.uid));
-        return mapUser(user, userDoc.data());
+        // Self-Healing & Role Check
+        const mechDocRef = doc(dbInstance, 'mechanics', user.uid);
+        const userDocRef = doc(dbInstance, 'users', user.uid);
+        
+        const [mechSnap, userSnap] = await Promise.all([
+            getDoc(mechDocRef),
+            getDoc(userDocRef)
+        ]);
+
+        let userData = userSnap.data() || {};
+        let needsUpdate = false;
+
+        // Fix missing isMechanic flag
+        if (mechSnap.exists() && !userData.isMechanic) {
+            userData.isMechanic = true;
+            needsUpdate = true;
+        }
+        
+        // Fix missing isAdmin flag for whitelisted emails
+        if (ADMIN_EMAILS.includes(email) && !userData.isAdmin) {
+            userData.isAdmin = true;
+            needsUpdate = true;
+        }
+
+        if (needsUpdate) {
+            await setDoc(userDocRef, { isMechanic: userData.isMechanic, isAdmin: userData.isAdmin }, { merge: true });
+        }
+
+        return mapUser(user, userData);
       } catch (e) {
+        console.error("Error fetching user profile:", e);
         return mapUser(user);
       }
     },
@@ -160,8 +204,11 @@ const RealApi = {
               unsubscribe();
               if (user) {
                   try {
-                    const userDoc = await getDoc(doc(ensureDb(), 'users', user.uid));
-                    resolve(mapUser(user, userDoc.data()));
+                    const dbInstance = ensureDb();
+                    const userDoc = await getDoc(doc(dbInstance, 'users', user.uid));
+                    // Self-healing check (simplified for load)
+                    const userData = userDoc.exists() ? userDoc.data() : {};
+                    resolve(mapUser(user, userData));
                   } catch(e) { resolve(mapUser(user)); }
               } else { resolve(null); }
           });
@@ -254,7 +301,18 @@ const RealApi = {
               console.error("Email Failed", e);
               return false;
           }
-      }
+      },
+      getSmsHistory: async (limitCount: number = 20) => {
+        const dbInstance = ensureDb();
+        try {
+            const q = query(collection(dbInstance, 'sms_logs'), orderBy('createdAt', 'desc'), limit(limitCount));
+            const snap = await getDocs(q);
+            return snap.docs.map(d => ({ id: d.id, ...convertTimestamps(d.data()) }));
+        } catch (e) {
+            console.error("Failed to fetch SMS history", e);
+            return [];
+        }
+    }
   },
 
   storage: {
@@ -342,7 +400,7 @@ const RealApi = {
     },
     getNearbyMechanics: async (lat: number, lng: number): Promise<Mechanic[]> => {
        const dbInstance = ensureDb();
-       // Only show verified and online mechanics
+       // Only show verified and online mechanics in a real app, but for demo showing all except offline/unverified
        const q = query(collection(dbInstance, 'mechanics'), where('availability', '!=', 'Offline'), where('verified', '==', true));
        const snapshot = await getDocs(q);
        

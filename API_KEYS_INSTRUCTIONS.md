@@ -31,7 +31,19 @@ firebase functions:config:set \
 
 ## 3. Deployment
 
-1.  **Set Frontend Keys**: Create a `.env` file with `VITE_STRIPE_PUBLISHABLE_KEY=pk_live_...`
+1.  **Set Frontend Keys (.env)**: 
+    Create a `.env` file in the root directory. **Keys must start with VITE_**.
+    
+    ```env
+    VITE_STRIPE_PUBLISHABLE_KEY=pk_live_...
+    VITE_FIREBASE_API_KEY=...
+    VITE_FIREBASE_AUTH_DOMAIN=...
+    VITE_FIREBASE_PROJECT_ID=...
+    VITE_FIREBASE_STORAGE_BUCKET=...
+    VITE_FIREBASE_MESSAGING_SENDER_ID=...
+    VITE_FIREBASE_APP_ID=...
+    VITE_FIREBASE_MEASUREMENT_ID=...
+    ```
 
 2.  **Build the Frontend**:
     ```bash
@@ -44,18 +56,7 @@ firebase functions:config:set \
     firebase deploy
     ```
 
-## 4. Environment Variables (.env)
-
-Ensure your frontend `.env` file contains the public keys:
-
-```env
-VITE_STRIPE_PUBLISHABLE_KEY=pk_live_...
-FIREBASE_API_KEY=...
-FIREBASE_AUTH_DOMAIN=...
-FIREBASE_PROJECT_ID=...
-```
-
-## 5. Stripe Connect Settings
+## 4. Stripe Connect Settings
 
 1.  In Stripe Dashboard, go to **Connect > Settings**.
 2.  Add your production URL (e.g., `https://mechanicnow.app/mechanic-dashboard`) to the **Redirects** allowlist.

@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../App';
 import { useNavigate, Navigate } from '../App';
-import { LayoutDashboard, Users, Wrench, FileText, CheckCircle, XCircle, TrendingUp, DollarSign, Activity, Calendar, ExternalLink, ShieldCheck, Eye, X, Briefcase, Filter, RotateCcw, ArrowUpDown } from 'lucide-react';
+import { LayoutDashboard, Users, Wrench, FileText, CheckCircle, XCircle, TrendingUp, DollarSign, Activity, Calendar, ExternalLink, ShieldCheck, Eye, X, Briefcase, Filter, RotateCcw, ArrowUpDown, ArrowLeft } from 'lucide-react';
 import { api } from '../services/api';
 import { Mechanic, JobRequest } from '../types';
 
@@ -102,6 +102,10 @@ export const AdminDashboard: React.FC = () => {
                 aValue = a.status || '';
                 bValue = b.status || '';
                 break;
+            case 'id':
+                aValue = a.id || '';
+                bValue = b.id || '';
+                break;
             default:
                 aValue = (a as any)[sortConfig.key] || '';
                 bValue = (b as any)[sortConfig.key] || '';
@@ -129,7 +133,7 @@ export const AdminDashboard: React.FC = () => {
   if (isLoading) return <div className="min-h-screen flex items-center justify-center font-bold text-slate-500">Loading Admin Panel...</div>;
 
   return (
-    <div className="flex h-screen bg-slate-50 overflow-hidden pt-[calc(4.5rem+env(safe-area-inset-top))]">
+    <div className="flex h-screen bg-slate-50 overflow-hidden pt-[env(safe-area-inset-top)]">
         {/* Mobile-Responsive Sidebar/Navbar */}
         <div className="hidden md:flex w-64 bg-slate-900 text-slate-300 flex-shrink-0 flex-col justify-between pb-6 shadow-2xl z-20">
             <div className="p-6">
@@ -157,17 +161,32 @@ export const AdminDashboard: React.FC = () => {
                     </button>
                 </nav>
             </div>
-            <div className="px-6 text-xs text-slate-500">
-                Logged in as {user?.name}
+            
+            <div className="px-6">
+                <button 
+                    onClick={() => navigate('/')}
+                    className="w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
+                >
+                    <ArrowLeft size={20} /> Exit to App
+                </button>
+                <div className="mt-4 pt-4 border-t border-slate-800 text-xs text-slate-500">
+                    Logged in as {user?.name}
+                </div>
             </div>
         </div>
 
         {/* Content Area */}
         <div className="flex-1 overflow-y-auto p-4 md:p-8 relative pb-20 md:pb-8">
             
+            {/* Mobile Header (Hidden on Desktop) */}
+            <div className="md:hidden flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold text-slate-900">Admin</h2>
+                <button onClick={() => navigate('/')} className="text-sm font-bold text-slate-600">Exit</button>
+            </div>
+            
             {activeTab === 'overview' && (
                 <div className="animate-fade-in space-y-6">
-                    <h2 className="text-2xl font-bold text-slate-900">Platform Overview</h2>
+                    <h2 className="text-2xl font-bold text-slate-900 hidden md:block">Platform Overview</h2>
                     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                         <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
                             <div className="flex items-center gap-3 mb-2 text-slate-500">
@@ -209,7 +228,7 @@ export const AdminDashboard: React.FC = () => {
 
             {activeTab === 'mechanics' && (
                 <div className="animate-fade-in space-y-6">
-                    <h2 className="text-2xl font-bold text-slate-900">Mechanic Applications</h2>
+                    <h2 className="text-2xl font-bold text-slate-900 hidden md:block">Mechanic Applications</h2>
                     <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
                         {mechanics.length === 0 ? (
                             <div className="p-8 text-center text-slate-500">No mechanics found.</div>
@@ -220,7 +239,12 @@ export const AdminDashboard: React.FC = () => {
                                         <div className="flex items-center gap-4 w-full md:w-auto md:flex-1">
                                             <img src={mech.avatar} className="w-12 h-12 rounded-full bg-slate-200 object-cover" />
                                             <div>
-                                                <h4 className="font-bold text-slate-900">{mech.name}</h4>
+                                                <h4 
+                                                    onClick={() => setReviewingMechanic(mech)}
+                                                    className="font-bold text-slate-900 hover:text-blue-600 hover:underline cursor-pointer transition-colors"
+                                                >
+                                                    {mech.name}
+                                                </h4>
                                                 <div className="flex items-center gap-2 text-xs text-slate-500">
                                                     <span>{mech.yearsExperience} Years Exp.</span>
                                                     {mech.verified ? (
@@ -251,7 +275,7 @@ export const AdminDashboard: React.FC = () => {
                                                 onClick={() => setReviewingMechanic(mech)}
                                                 className="flex-1 md:flex-none px-4 py-2 border border-slate-200 rounded-lg text-sm font-bold text-slate-600 hover:bg-white transition-colors"
                                             >
-                                                Review App
+                                                {mech.verified ? 'View Profile' : 'Review App'}
                                             </button>
                                             {!mech.verified && (
                                                 <button 
@@ -273,7 +297,7 @@ export const AdminDashboard: React.FC = () => {
             {activeTab === 'jobs' && (
                 <div className="animate-fade-in space-y-6">
                     <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
-                        <h2 className="text-2xl font-bold text-slate-900">Job Bookings</h2>
+                        <h2 className="text-2xl font-bold text-slate-900 hidden md:block">Job Bookings</h2>
                         <div className="flex flex-wrap gap-2">
                              {/* Status Filter */}
                              <div className="relative">
@@ -318,32 +342,34 @@ export const AdminDashboard: React.FC = () => {
                             <table className="w-full text-left">
                                 <thead className="bg-slate-50 border-b border-slate-100">
                                     <tr>
+                                        <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Job ID</th>
                                         <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100" onClick={() => handleSort('createdAt')}>
-                                            <div className="flex items-center gap-1">Date <ArrowUpDown size={12}/></div>
+                                            <div className="flex items-center gap-1">Created At <ArrowUpDown size={12}/></div>
                                         </th>
                                         <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100" onClick={() => handleSort('customerName')}>
-                                            <div className="flex items-center gap-1">Customer <ArrowUpDown size={12}/></div>
+                                            <div className="flex items-center gap-1">Customer Name <ArrowUpDown size={12}/></div>
                                         </th>
                                         <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Vehicle & Issue</th>
                                         <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100" onClick={() => handleSort('mechanicName')}>
-                                            <div className="flex items-center gap-1">Mechanic <ArrowUpDown size={12}/></div>
-                                        </th>
-                                        <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100" onClick={() => handleSort('payout')}>
-                                            <div className="flex items-center gap-1">Amount <ArrowUpDown size={12}/></div>
+                                            <div className="flex items-center gap-1">Mechanic Name <ArrowUpDown size={12}/></div>
                                         </th>
                                         <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100" onClick={() => handleSort('status')}>
                                             <div className="flex items-center gap-1">Status <ArrowUpDown size={12}/></div>
+                                        </th>
+                                        <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100" onClick={() => handleSort('payout')}>
+                                            <div className="flex items-center gap-1">Amount <ArrowUpDown size={12}/></div>
                                         </th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-50 text-sm">
                                     {sortedJobs.length === 0 ? (
-                                        <tr><td colSpan={6} className="p-8 text-center text-slate-500">No jobs match your filters.</td></tr>
+                                        <tr><td colSpan={7} className="p-8 text-center text-slate-500">No jobs match your filters.</td></tr>
                                     ) : (
                                         sortedJobs.map(job => {
                                             const mechName = job.mechanicId ? mechanics.find(m => m.id === job.mechanicId)?.name : 'Unassigned';
                                             return (
                                                 <tr key={job.id} className="hover:bg-slate-50 transition-colors">
+                                                    <td className="p-4 text-xs font-mono text-slate-500 select-all">{job.id}</td>
                                                     <td className="p-4 text-slate-500 whitespace-nowrap">
                                                         {job.createdAt ? new Date(job.createdAt).toLocaleDateString() : 'N/A'}
                                                         <div className="text-xs opacity-50">{job.createdAt ? new Date(job.createdAt).toLocaleTimeString() : ''}</div>
@@ -358,7 +384,6 @@ export const AdminDashboard: React.FC = () => {
                                                             {mechName}
                                                         </span>
                                                     </td>
-                                                    <td className="p-4 font-bold text-slate-900">${job.payout.toFixed(2)}</td>
                                                     <td className="p-4">
                                                         <span className={`px-2 py-1 rounded-full text-xs font-bold ${
                                                             job.status === 'COMPLETED' ? 'bg-green-100 text-green-700' :
@@ -368,6 +393,7 @@ export const AdminDashboard: React.FC = () => {
                                                             {job.status}
                                                         </span>
                                                     </td>
+                                                    <td className="p-4 font-bold text-slate-900">${job.payout.toFixed(2)}</td>
                                                 </tr>
                                             );
                                         })
@@ -410,7 +436,10 @@ export const AdminDashboard: React.FC = () => {
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
                 <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
                     <div className="bg-slate-900 p-4 text-white flex justify-between items-center">
-                        <h3 className="font-bold flex items-center gap-2"><ShieldCheck size={18}/> Review Application</h3>
+                        <h3 className="font-bold flex items-center gap-2">
+                            <ShieldCheck size={18}/> 
+                            {reviewingMechanic.verified ? 'Mechanic Profile' : 'Review Application'}
+                        </h3>
                         <button onClick={() => setReviewingMechanic(null)}><X size={20} className="hover:text-slate-300"/></button>
                     </div>
                     
@@ -439,49 +468,4 @@ export const AdminDashboard: React.FC = () => {
                             <div>
                                 <h4 className="font-bold text-slate-800 text-sm mb-2">Submitted Documents</h4>
                                 <div className="space-y-2">
-                                    <div className="flex items-center justify-between p-3 border border-slate-200 rounded-lg hover:bg-slate-50">
-                                        <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
-                                            <FileText size={16} className="text-blue-500" /> Driver's License
-                                        </div>
-                                        <button className="text-xs font-bold text-blue-600 flex items-center gap-1 hover:underline"><Eye size={12}/> View</button>
-                                    </div>
-                                    <div className="flex items-center justify-between p-3 border border-slate-200 rounded-lg hover:bg-slate-50">
-                                        <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
-                                            <FileText size={16} className="text-blue-500" /> Insurance Policy
-                                        </div>
-                                        <button className="text-xs font-bold text-blue-600 flex items-center gap-1 hover:underline"><Eye size={12}/> View</button>
-                                    </div>
-                                     <div className="flex items-center justify-between p-3 border border-slate-200 rounded-lg hover:bg-slate-50">
-                                        <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
-                                            <ShieldCheck size={16} className="text-green-500" /> Background Check
-                                        </div>
-                                        <span className="text-xs font-bold text-green-600 bg-green-100 px-2 py-1 rounded">Passed</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="p-4 border-t border-slate-100 flex gap-3 bg-slate-50">
-                        <button 
-                            onClick={() => setReviewingMechanic(null)}
-                            className="flex-1 py-3 bg-white border border-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-100"
-                        >
-                            Close
-                        </button>
-                        {!reviewingMechanic.verified && (
-                            <button 
-                                onClick={() => handleApproveMechanic(reviewingMechanic.id)}
-                                className="flex-1 py-3 bg-green-600 text-white font-bold rounded-xl hover:bg-green-500 shadow-lg shadow-green-200"
-                            >
-                                Approve Mechanic
-                            </button>
-                        )}
-                    </div>
-                </div>
-            </div>
-        )}
-
-    </div>
-  );
-};
+                                    <div className="flex items-center justify-between p

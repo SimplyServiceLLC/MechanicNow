@@ -1,6 +1,7 @@
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useApp } from '../App';
-import { MapPin, DollarSign, Clock, User, ArrowRight, Shield, Settings, Power, Navigation, Phone, Bell, MessageSquare, X, Send, CheckCircle, PenTool, Sparkles, Loader2, FileText, Wrench, Mic, TrendingUp, RefreshCw, Calendar, ChevronRight, Timer, RotateCcw, Package, Wallet, CreditCard, Banknote, Smartphone, Filter, Map as MapIcon, Link2, Save, ClipboardList, Lock, Briefcase, ChevronUp, ShieldCheck } from 'lucide-react';
+import { MapPin, DollarSign, Clock, User, ArrowRight, Shield, Settings, Power, Navigation, Phone, Bell, MessageSquare, X, Send, CheckCircle, PenTool, Sparkles, Loader2, FileText, Wrench, Mic, TrendingUp, RefreshCw, Calendar, ChevronRight, Timer, RotateCcw, Package, Wallet, CreditCard, Banknote, Smartphone, Filter, Map as MapIcon, Link2, Save, ClipboardList, Lock, Briefcase, ChevronUp, ShieldCheck, LogOut } from 'lucide-react';
 import { useNavigate, Navigate } from '../App';
 import { JobRequest, JobCompletionDetails, AiDiagnosisResult, MechanicSchedule } from '../types';
 import { diagnoseCarIssue } from '../services/geminiService';
@@ -422,7 +423,7 @@ const CompletionModal = ({ job, onClose, onComplete }: { job: JobRequest, onClos
 };
 
 export const MechanicDashboard: React.FC = () => {
-  const { user, notify, isLoading: appLoading } = useApp();
+  const { user, notify, isLoading: appLoading, logout } = useApp();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'requests' | 'map' | 'earnings' | 'history' | 'profile'>('requests');
   const [isOnline, setIsOnline] = useState(false);
@@ -572,7 +573,7 @@ export const MechanicDashboard: React.FC = () => {
   const completedJobs = requests.filter(r => r.status === 'COMPLETED' && r.mechanicId === user?.id);
 
   return (
-    <div className="flex flex-col h-screen bg-slate-100 overflow-hidden pt-[calc(3.5rem+env(safe-area-inset-top))]">
+    <div className="flex flex-col h-screen bg-slate-100 overflow-hidden pt-[env(safe-area-inset-top)]">
         
         {/* Professional Header */}
         <div className="bg-slate-900 text-white px-4 py-3 flex justify-between items-center shadow-md z-30">
@@ -818,6 +819,14 @@ export const MechanicDashboard: React.FC = () => {
                                 </div>
                             </div>
 
+                            {/* Mode Switching - Prominent Button */}
+                            <button 
+                                onClick={() => navigate('/')}
+                                className="w-full py-4 bg-slate-900 text-white font-bold rounded-xl hover:bg-slate-800 transition-colors shadow-lg flex items-center justify-center gap-2"
+                            >
+                                <User size={18} /> Switch to Customer App
+                            </button>
+
                             <div className="space-y-3">
                                 <button className="w-full bg-white p-4 rounded-xl border border-slate-200 flex items-center justify-between hover:bg-slate-50 transition-colors">
                                     <div className="flex items-center gap-3 font-bold text-slate-700">
@@ -831,16 +840,13 @@ export const MechanicDashboard: React.FC = () => {
                                     </div>
                                     <ChevronRight size={16} className="text-slate-400"/>
                                 </button>
-                                <button className="w-full bg-white p-4 rounded-xl border border-slate-200 flex items-center justify-between hover:bg-slate-50 transition-colors">
-                                    <div className="flex items-center gap-3 font-bold text-slate-700">
-                                        <Lock size={20} className="text-slate-400"/> Privacy & Security
-                                    </div>
-                                    <ChevronRight size={16} className="text-slate-400"/>
-                                </button>
                             </div>
                              
-                            <button className="w-full py-4 text-red-500 font-bold bg-red-50 border border-red-100 rounded-xl hover:bg-red-100 transition-colors">
-                                Sign Out
+                            <button 
+                                onClick={logout}
+                                className="w-full py-4 text-red-500 font-bold bg-red-50 border border-red-100 rounded-xl hover:bg-red-100 transition-colors flex items-center justify-center gap-2"
+                            >
+                                <LogOut size={18}/> Sign Out
                             </button>
                          </div>
                     )}
