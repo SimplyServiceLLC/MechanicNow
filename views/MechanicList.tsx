@@ -9,8 +9,8 @@ import { api } from '../services/api';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 
-// Initialize Stripe with Public Key (Env variable recommended)
-const stripePromise = loadStripe('pk_test_51O4p0dJ9...'); // Replace with process.env.VITE_STRIPE_PUBLISHABLE_KEY
+// Initialize Stripe with Public Key from environment variable
+const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '');
 
 const getAvailabilityColor = (status: string) => {
   switch (status) {
