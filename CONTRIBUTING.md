@@ -22,11 +22,11 @@ npm install
 # Run development server
 npm run dev
 
-# Run tests
-npm test
-
 # Build for production
 npm run build
+
+# Preview production build
+npm run preview
 ```
 
 ## Code Standards
