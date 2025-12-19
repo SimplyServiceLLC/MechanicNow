@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { useNavigate } from '../App';
 import { useApp } from '../App';
@@ -40,6 +41,10 @@ export const MechanicRegistration: React.FC = () => {
         friday: { start: '9:00 AM', end: '5:00 PM', active: true },
         saturday: { start: '10:00 AM', end: '4:00 PM', active: true },
         sunday: { start: '10:00 AM', end: '2:00 PM', active: false }
+    },
+    documents: {
+        license: '',
+        insurance: ''
     }
   });
 
@@ -99,7 +104,18 @@ export const MechanicRegistration: React.FC = () => {
       setUploadingDoc(docType);
       try {
           // Call API (Mock or Real Storage)
-          await api.storage.uploadFile(file, `documents/${docType}`);
+          const url = await api.storage.uploadFile(file, `documents/${docType}`);
+          
+          if (docType === 'license' || docType === 'insurance') {
+              setFormData(prev => ({
+                  ...prev,
+                  documents: {
+                      ...prev.documents,
+                      [docType]: url
+                  }
+              }));
+          }
+          
           setVerificationDocs(prev => ({ ...prev, [docType]: true }));
           notify("Success", `${docType === 'profilePhoto' ? 'Photo' : docType.toUpperCase()} uploaded successfully.`);
       } catch (err) {

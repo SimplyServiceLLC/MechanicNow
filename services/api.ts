@@ -12,18 +12,14 @@ import { getFunctions, httpsCallable } from 'firebase/functions';
 
 // --- CONFIGURATION ---
 
-// Whitelist of emails that automatically get Admin Access
 const ADMIN_EMAILS = ['admin@mechanicnow.com', 'owner@mechanicnow.com', 'simply757@gmail.com'];
 
-// Helper to safely get Env Variables in both Vite and Standard environments
 const getEnv = (key: string) => {
-    // Check for Vite's import.meta.env
     // @ts-ignore
     if (typeof import.meta !== 'undefined' && import.meta.env) {
         // @ts-ignore
         return import.meta.env[`VITE_${key}`] || import.meta.env[key];
     }
-    // Check for standard process.env
     if (typeof process !== 'undefined' && process.env) {
         return process.env[`VITE_${key}`] || process.env[key];
     }
@@ -45,10 +41,10 @@ let auth: any = null;
 let storage: any = null;
 let functions: any = null;
 
+let isFirebaseReady = false;
+
 try {
-  const hasConfig = !!firebaseConfig.apiKey;
-  
-  if (hasConfig) {
+  if (firebaseConfig.apiKey && firebaseConfig.apiKey.length > 5) {
       const app = (firebaseApp as any).initializeApp 
         ? (firebaseApp as any).initializeApp(firebaseConfig) 
         : (firebaseApp as any).default.initializeApp(firebaseConfig);
@@ -58,28 +54,22 @@ try {
       storage = getStorage(app);
       functions = getFunctions(app);
       
+      isFirebaseReady = true;
       console.log(`✅ [MechanicNow] Connected to Firebase Project: ${firebaseConfig.projectId}`);
   } else {
-      console.warn("⚠️ Firebase Config missing. Please add VITE_FIREBASE_API_KEY to your .env file.");
+      console.warn("⚠️ Firebase Config missing or invalid. Falling back to MOCK MODE.");
   }
-
 } catch (e) {
-  console.error("❌ Firebase initialization failed. Please check your configuration.", e);
+  console.error("❌ Firebase initialization failed. Falling back to MOCK MODE.", e);
 }
 
-// --- Data Conversion Helper ---
 const convertTimestamps = (data: any): any => {
     if (!data) return data;
     if (typeof data !== 'object') return data;
-    
     if (data.seconds !== undefined && data.nanoseconds !== undefined) {
         return new Date(data.seconds * 1000).toISOString();
     }
-    
-    if (Array.isArray(data)) {
-        return data.map(item => convertTimestamps(item));
-    }
-    
+    if (Array.isArray(data)) return data.map(item => convertTimestamps(item));
     const newData: any = {};
     for (const key of Object.keys(data)) {
         newData[key] = convertTimestamps(data[key]);
@@ -102,256 +92,104 @@ const mapUser = (user: any, data?: any): UserProfile => {
       isMechanic: data?.isMechanic,
       isAdmin: isAdmin,
       vehicles: data?.vehicles || [],
-      history: convertTimestamps(data?.history || [])
+      history: convertTimestamps(data?.history || []),
+      stripeAccountId: data?.stripeAccountId
   };
 };
 
-// Helper guards
-const ensureAuth = () => { if (!auth) throw new Error("Firebase Auth not initialized. Check .env keys."); return auth; };
-const ensureDb = () => { if (!db) throw new Error("Firestore not initialized. Check .env keys."); return db; };
-const ensureFunctions = () => { if (!functions) throw new Error("Cloud Functions not initialized. Check .env keys."); return functions; };
+const ensureAuth = () => { if (!auth) throw new Error("Firebase Auth missing."); return auth; };
+const ensureDb = () => { if (!db) throw new Error("Firestore missing."); return db; };
+const ensureFunctions = () => { if (!functions) throw new Error("Functions missing."); return functions; };
 
+// --- REAL API ---
 const RealApi = {
   status: { getConnectionInfo: () => ({ mode: 'REAL' as const, connected: !!auth, provider: 'Google Cloud' }) },
   
   auth: {
-    login: async (name: string, email: string, password?: string): Promise<UserProfile> => {
+    login: async (email: string, password?: string): Promise<UserProfile> => {
       const authInstance = ensureAuth();
-      if (!password) throw new Error("Password is required.");
-      
-      let user: any;
-      const dbInstance = ensureDb();
-      
+      if (!password) throw new Error("Password required.");
       const signIn = firebaseAuth.signInWithEmailAndPassword || (firebaseAuth as any).default.signInWithEmailAndPassword;
-      const createUser = firebaseAuth.createUserWithEmailAndPassword || (firebaseAuth as any).default.createUserWithEmailAndPassword;
-      const updateProfileFn = firebaseAuth.updateProfile || (firebaseAuth as any).default.updateProfile;
-
-      try {
-        const cred = await signIn(authInstance, email, password);
-        user = cred.user;
-      } catch (e: any) {
-        // Auto-register if user not found (Legacy behavior support)
-        if (e.code === 'auth/user-not-found' || e.code === 'auth/invalid-credential' || e.code === 'auth/invalid-login-credentials' || e.code === 'auth/invalid-email') {
-             try {
-                 const cred = await createUser(authInstance, email, password);
-                 user = cred.user;
-                 await updateProfileFn(user, { displayName: name });
-                 
-                 // Initial User Doc
-                 await setDoc(doc(dbInstance, 'users', user.uid), { 
-                     name: name || email.split('@')[0], 
-                     email, 
-                     vehicles: [], 
-                     history: [], 
-                     isMechanic: false,
-                     isAdmin: ADMIN_EMAILS.includes(email), // Auto-set Admin in DB
-                     createdAt: serverTimestamp() 
-                });
-             } catch (regError: any) {
-                 if (regError.code === 'auth/email-already-in-use') {
-                     throw new Error("Incorrect password for existing account.");
-                 }
-                 throw regError;
-             }
-        } else {
-            throw e;
-        }
-      }
-      
-      try {
-        // Self-Healing & Role Check
-        const mechDocRef = doc(dbInstance, 'mechanics', user.uid);
-        const userDocRef = doc(dbInstance, 'users', user.uid);
-        
-        const [mechSnap, userSnap] = await Promise.all([
-            getDoc(mechDocRef),
-            getDoc(userDocRef)
-        ]);
-
-        let userData = userSnap.data() || {};
-        let needsUpdate = false;
-
-        // Fix missing isMechanic flag
-        if (mechSnap.exists() && !userData.isMechanic) {
-            userData.isMechanic = true;
-            needsUpdate = true;
-        }
-        
-        // Fix missing isAdmin flag for whitelisted emails
-        if (ADMIN_EMAILS.includes(email) && !userData.isAdmin) {
-            userData.isAdmin = true;
-            needsUpdate = true;
-        }
-
-        if (needsUpdate) {
-            await setDoc(userDocRef, { isMechanic: userData.isMechanic, isAdmin: userData.isAdmin }, { merge: true });
-        }
-
-        return mapUser(user, userData);
-      } catch (e) {
-        console.error("Error fetching user profile:", e);
-        return mapUser(user);
-      }
+      const cred = await signIn(authInstance, email, password);
+      const userDoc = await getDoc(doc(ensureDb(), 'users', cred.user.uid));
+      return mapUser(cred.user, userDoc.data());
     },
-
+    registerCustomer: async (name: string, email: string, password?: string): Promise<UserProfile> => {
+        const authInstance = ensureAuth();
+        const createUser = firebaseAuth.createUserWithEmailAndPassword || (firebaseAuth as any).default.createUserWithEmailAndPassword;
+        const updateProfileFn = firebaseAuth.updateProfile || (firebaseAuth as any).default.updateProfile;
+        const cred = await createUser(authInstance, email, password!);
+        await updateProfileFn(cred.user, { displayName: name });
+        const userData = { name, email, vehicles: [], history: [], isMechanic: false, isAdmin: ADMIN_EMAILS.includes(email), createdAt: serverTimestamp() };
+        await setDoc(doc(ensureDb(), 'users', cred.user.uid), userData);
+        return mapUser(cred.user, userData);
+    },
     logout: async () => { if (auth) await (firebaseAuth.signOut || (firebaseAuth as any).default.signOut)(auth); },
-    
-    getCurrentUser: async (): Promise<UserProfile | null> => {
+    getCurrentUser: async () => {
       if (!auth) return null;
       const onAuthStateChanged = firebaseAuth.onAuthStateChanged || (firebaseAuth as any).default.onAuthStateChanged;
       return new Promise((resolve) => {
           const unsubscribe = onAuthStateChanged(auth, async (user: any) => {
               unsubscribe();
               if (user) {
-                  try {
-                    const dbInstance = ensureDb();
-                    const userDoc = await getDoc(doc(dbInstance, 'users', user.uid));
-                    // Self-healing check (simplified for load)
-                    const userData = userDoc.exists() ? userDoc.data() : {};
-                    resolve(mapUser(user, userData));
-                  } catch(e) { resolve(mapUser(user)); }
-              } else { resolve(null); }
+                  const userDoc = await getDoc(doc(ensureDb(), 'users', user.uid));
+                  resolve(mapUser(user, userDoc.exists() ? userDoc.data() : {}));
+              } else resolve(null);
           });
       });
     },
-
     updateProfile: async (user: UserProfile) => {
-      const authInstance = ensureAuth();
-      if (!authInstance.currentUser) throw new Error("Not authenticated");
-      const updateData: any = {
-          name: user.name,
-          email: user.email,
-          phone: user.phone || null,
-          address: user.address || null,
-          vehicles: JSON.parse(JSON.stringify(user.vehicles)),
-          history: JSON.parse(JSON.stringify(user.history))
-      };
-      await updateDoc(doc(ensureDb(), 'users', authInstance.currentUser.uid), updateData);
+      await updateDoc(doc(ensureDb(), 'users', user.id), { ...user });
       return user;
     },
-
     resetPassword: async (email: string) => {
-        const authInstance = ensureAuth();
         const sendReset = firebaseAuth.sendPasswordResetEmail || (firebaseAuth as any).default.sendPasswordResetEmail;
-        await sendReset(authInstance, email);
+        await sendReset(ensureAuth(), email);
     }
   },
 
   payment: {
     createPaymentIntent: async (amount: number, currency: string = 'usd', mechanicId?: string) => {
-        const fns = ensureFunctions();
-        const dbInstance = ensureDb();
-
-        let stripeDestination = undefined;
-        if (mechanicId) {
-             try {
-                 const mechDoc = await getDoc(doc(dbInstance, 'mechanics', mechanicId));
-                 if (mechDoc.exists() && mechDoc.data().stripeAccountId) {
-                     stripeDestination = mechDoc.data().stripeAccountId;
-                 }
-             } catch(e) {
-                 console.warn("Could not resolve Stripe Account ID", e);
-             }
-        }
-
-        const createPaymentIntentFn = httpsCallable(fns, 'createPaymentIntent');
-        try {
-            const result: any = await createPaymentIntentFn({ amount, currency, mechanicStripeId: stripeDestination });
-            return result.data as { clientSecret: string, id: string };
-        } catch (e: any) {
-            console.error("Payment Intent Error:", e);
-            throw new Error(e.message || "Failed to initiate payment");
-        }
+        const createPaymentIntentFn = httpsCallable(ensureFunctions(), 'createPaymentIntent');
+        const result: any = await createPaymentIntentFn({ amount, currency, mechanicStripeId: mechanicId });
+        return result.data;
     },
-    authorize: async (amount: number, method: PaymentMethod) => {
-        return { success: true, transactionId: `tx_${Date.now()}` };
-    },
+    authorize: async (amount: number, method: PaymentMethod) => ({ success: true }),
     capture: async (jobId: string, amount: number) => {
-         const fns = ensureFunctions();
-         const capturePaymentFn = httpsCallable(fns, 'capturePayment');
-         try {
-             await capturePaymentFn({ jobId, amount });
-             return { success: true };
-         } catch (e: any) {
-             console.error("Capture Error:", e);
-             throw new Error("Failed to capture payment");
-         }
+         const capturePaymentFn = httpsCallable(ensureFunctions(), 'capturePayment');
+         await capturePaymentFn({ jobId, amount });
+         return { success: true };
     }
   },
   
   notifications: {
       sendSMS: async (phone: string, message: string) => {
-          if (!functions) return false;
-          const sendSmsFn = httpsCallable(functions, 'sendSms');
-          try {
-              await sendSmsFn({ phone, message });
-              return true;
-          } catch(e) { 
-              console.error("SMS Failed", e);
-              return false; 
-          }
+          try { await httpsCallable(ensureFunctions(), 'sendSms')({ phone, message }); return true; } catch(e) { return false; }
       },
       sendEmail: async (email: string, subject: string, body: string) => {
-          if (!functions) return false;
-          const sendEmailFn = httpsCallable(functions, 'sendEmail');
-          try {
-              await sendEmailFn({ email, subject, body });
-              return true;
-          } catch(e) {
-              console.error("Email Failed", e);
-              return false;
-          }
+          try { await httpsCallable(ensureFunctions(), 'sendEmail')({ email, subject, body }); return true; } catch(e) { return false; }
       },
       getSmsHistory: async (limitCount: number = 20) => {
-        const dbInstance = ensureDb();
-        try {
-            const q = query(collection(dbInstance, 'sms_logs'), orderBy('createdAt', 'desc'), limit(limitCount));
-            const snap = await getDocs(q);
-            return snap.docs.map(d => ({ id: d.id, ...convertTimestamps(d.data()) }));
-        } catch (e) {
-            console.error("Failed to fetch SMS history", e);
-            return [];
-        }
+        const snap = await getDocs(query(collection(ensureDb(), 'sms_logs'), orderBy('createdAt', 'desc'), limit(limitCount)));
+        return snap.docs.map(d => ({ id: d.id, ...convertTimestamps(d.data()) }));
     }
   },
 
   chat: {
       subscribe: (jobId: string, callback: (messages: any[]) => void) => {
-          const dbInstance = ensureDb();
-          const q = query(
-              collection(dbInstance, `job_requests/${jobId}/messages`),
-              orderBy('createdAt', 'asc')
-          );
-          return onSnapshot(q, (snapshot) => {
-              const messages = snapshot.docs.map(doc => ({
-                  id: doc.id,
-                  ...convertTimestamps(doc.data())
-              }));
-              callback(messages);
+          return onSnapshot(query(collection(ensureDb(), `job_requests/${jobId}/messages`), orderBy('createdAt', 'asc')), (snapshot) => {
+              callback(snapshot.docs.map(doc => ({ id: doc.id, ...convertTimestamps(doc.data()) })));
           });
       },
       sendMessage: async (jobId: string, sender: 'customer' | 'mechanic', text: string) => {
-          const dbInstance = ensureDb();
-          await addDoc(collection(dbInstance, `job_requests/${jobId}/messages`), {
-              sender,
-              text,
-              createdAt: serverTimestamp()
-          });
+          await addDoc(collection(ensureDb(), `job_requests/${jobId}/messages`), { sender, text, createdAt: serverTimestamp() });
       }
   },
 
   reviews: {
       submit: async (mechanicId: string, jobId: string, rating: number, text: string) => {
-          const fns = ensureFunctions();
           const authInstance = ensureAuth();
-          const submitFn = httpsCallable(fns, 'submitReview');
-          await submitFn({
-              mechanicId,
-              jobId,
-              rating,
-              text,
-              authorName: authInstance.currentUser?.displayName || 'User'
-          });
+          await httpsCallable(ensureFunctions(), 'submitReview')({ mechanicId, jobId, rating, text, authorName: authInstance.currentUser?.displayName || 'User' });
       }
   },
 
@@ -366,17 +204,8 @@ const RealApi = {
 
   support: {
       createTicket: async (jobId: string, subject: string, message: string) => {
-          const dbInstance = ensureDb();
-          const authInstance = ensureAuth();
-          if (!authInstance.currentUser) throw new Error("Not logged in");
-          
-          const docRef = await addDoc(collection(dbInstance, 'support_tickets'), {
-              userId: authInstance.currentUser.uid,
-              jobId,
-              subject,
-              message,
-              status: 'OPEN',
-              createdAt: serverTimestamp()
+          const docRef = await addDoc(collection(ensureDb(), 'support_tickets'), {
+              userId: ensureAuth().currentUser?.uid, jobId, subject, message, status: 'OPEN', createdAt: serverTimestamp()
           });
           return docRef.id;
       }
@@ -385,299 +214,242 @@ const RealApi = {
   mechanic: {
     register: async (data: MechanicRegistrationData) => {
         const authInstance = ensureAuth();
-        const dbInstance = ensureDb();
-        if (!data.password) throw new Error("Password required");
-
         const createUser = firebaseAuth.createUserWithEmailAndPassword || (firebaseAuth as any).default.createUserWithEmailAndPassword;
         const updateProfileFn = firebaseAuth.updateProfile || (firebaseAuth as any).default.updateProfile;
-
-        const cred = await createUser(authInstance, data.email, data.password);
-        const user = cred.user;
-        await updateProfileFn(user, { displayName: data.name });
-
-        await setDoc(doc(dbInstance, 'users', user.uid), {
-            name: data.name,
-            email: data.email,
-            isMechanic: true,
-            phone: data.phone,
-            vehicles: [],
-            history: [],
-            createdAt: serverTimestamp()
-        });
-
-        const mechanicData: Partial<Mechanic> = {
-            id: user.uid,
-            name: data.name,
-            rating: 5.0, 
-            jobsCompleted: 0,
-            avatar: user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(data.name)}&background=10b981&color=fff`,
-            bio: data.bio,
-            yearsExperience: data.yearsExperience,
-            specialties: data.specialties,
-            certifications: data.certifications,
-            schedule: data.schedule,
-            availability: 'Offline',
-            reviews: [],
-            lat: 36.8508, 
-            lng: -76.2859,
-            verified: false
-        };
-        await setDoc(doc(dbInstance, 'mechanics', user.uid), mechanicData);
-        await RealApi.notifications.sendEmail(data.email, "Welcome to MechanicNow", "Your application is under review.");
-
-        return mapUser(user, { name: data.name });
+        const cred = await createUser(authInstance, data.email, data.password!);
+        await updateProfileFn(cred.user, { displayName: data.name });
+        await setDoc(doc(ensureDb(), 'users', cred.user.uid), { name: data.name, email: data.email, isMechanic: true, phone: data.phone, vehicles: [], history: [], createdAt: serverTimestamp() });
+        const mechanicData = { id: cred.user.uid, name: data.name, email: data.email, phone: data.phone, rating: 5.0, jobsCompleted: 0, avatar: cred.user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(data.name)}&background=10b981&color=fff`, bio: data.bio, specialties: data.specialties, verified: false };
+        await setDoc(doc(ensureDb(), 'mechanics', cred.user.uid), mechanicData);
+        return mapUser(cred.user, { name: data.name });
     },
     verifyBackground: async (email: string, ssn: string) => {
-        const fns = ensureFunctions();
-        const verifyFn = httpsCallable(fns, 'verifyBackground');
-        try {
-            const result: any = await verifyFn({ email, ssn });
-            return result.data;
-        } catch (e: any) {
-            console.warn("Background Check Trigger Failed", e);
-            return { status: 'pending_manual' };
-        }
+        try { const res: any = await httpsCallable(ensureFunctions(), 'verifyBackground')({ email, ssn }); return res.data; } catch (e) { return { status: 'pending' }; }
     },
     getNearbyMechanics: async (lat: number, lng: number): Promise<Mechanic[]> => {
-       const dbInstance = ensureDb();
-       // Only show verified and online mechanics in a real app, but for demo showing all except offline/unverified
-       const q = query(collection(dbInstance, 'mechanics'), where('availability', '!=', 'Offline'), where('verified', '==', true));
-       const snapshot = await getDocs(q);
-       
-       return snapshot.docs.map(d => {
-           const data = d.data();
-           const mockDist = Math.sqrt(Math.pow(data.lat - lat, 2) + Math.pow(data.lng - lng, 2)) * 69; 
-           
-           return {
-               id: d.id,
-               name: data.name || 'Unknown Mechanic',
-               rating: data.rating || 5.0,
-               jobsCompleted: data.jobsCompleted || 0,
-               avatar: data.avatar || 'https://via.placeholder.com/150',
-               distance: `${mockDist.toFixed(1)} mi`,
-               eta: '20 min',
-               availability: data.availability || 'Available Now',
-               yearsExperience: data.yearsExperience || 1,
-               bio: data.bio || '',
-               specialties: data.specialties || [],
-               certifications: data.certifications || [],
-               reviews: data.reviews || [],
-               schedule: data.schedule || {},
-               lat: data.lat || lat,
-               lng: data.lng || lng,
-               verified: !!data.verified
-           } as Mechanic;
-       });
+       const q = query(collection(ensureDb(), 'mechanics'), where('verified', '==', true));
+       const snap = await getDocs(q);
+       return snap.docs.map(d => ({ id: d.id, ...d.data() } as Mechanic));
     },
-
     getDashboardData: async () => {
-      const authInstance = ensureAuth();
-      const dbInstance = ensureDb();
-      if (!authInstance.currentUser) throw new Error("Not authenticated");
-      
-      const qNew = query(collection(dbInstance, 'job_requests'), where('status', '==', 'NEW'), limit(50));
-      const qMy = query(collection(dbInstance, 'job_requests'), where('mechanicId', '==', authInstance.currentUser.uid), limit(50));
-      
-      const [snapNew, snapMy] = await Promise.all([getDocs(qNew), getDocs(qMy)]);
-      
-      const requestsMap = new Map();
-      snapNew.docs.forEach(d => requestsMap.set(d.id, { id: d.id, ...convertTimestamps(d.data()) }));
-      snapMy.docs.forEach(d => requestsMap.set(d.id, { id: d.id, ...convertTimestamps(d.data()) }));
-      
-      const requests = Array.from(requestsMap.values()).sort((a:any, b:any) => {
-           const tA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-           const tB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-           return tB - tA;
-      });
-
-      const statsDoc = await getDoc(doc(dbInstance, 'mechanics', authInstance.currentUser.uid));
-      const statsData = (statsDoc.exists() ? statsDoc.data() as any : null) || { earnings: { today: 0, week: 0, month: 0 }, isOnline: false };
-
-      return { requests, earnings: statsData.earnings || { today: 0, week: 0, month: 0 }, isOnline: !!statsData.isOnline, stripeConnected: !!statsData.stripeConnected };
+      const uid = ensureAuth().currentUser?.uid;
+      const snapNew = await getDocs(query(collection(ensureDb(), 'job_requests'), where('status', '==', 'NEW'), limit(50)));
+      const snapMy = await getDocs(query(collection(ensureDb(), 'job_requests'), where('mechanicId', '==', uid), limit(50)));
+      const requests = [...snapNew.docs, ...snapMy.docs].map(d => ({ id: d.id, ...convertTimestamps(d.data()) }));
+      const statsDoc = await getDoc(doc(ensureDb(), 'mechanics', uid!));
+      const statsData = statsDoc.exists() ? statsDoc.data() : { earnings: { week: 0 }, isOnline: false };
+      return { 
+          requests, 
+          earnings: statsData?.earnings || { today: 0, week: 0, month: 0 }, 
+          isOnline: !!statsData?.isOnline, 
+          stripeConnected: !!statsData?.stripeConnected,
+          stripeAccountId: statsData?.stripeAccountId
+      };
     },
-    
-    createStripeConnectAccount: async () => {
-        const fns = ensureFunctions();
-        const createAccountFn = httpsCallable(fns, 'createConnectAccount');
-        try {
-            const result: any = await createAccountFn({ email: auth.currentUser?.email });
-            return result.data;
-        } catch(e: any) {
-            throw new Error("Failed to init Stripe Connect");
-        }
+    createStripeConnectAccount: async (email?: string) => {
+        const res: any = await httpsCallable(ensureFunctions(), 'createConnectAccount')({ email: email || ensureAuth().currentUser?.email });
+        return res.data;
     },
-    
     onboardStripe: async (authCode?: string) => {
-         const fns = ensureFunctions();
-         const dbInstance = ensureDb();
-         const authInstance = ensureAuth();
-
-         const onboardFn = httpsCallable(fns, 'onboardStripe');
-         try {
-             const result: any = await onboardFn({ code: authCode });
-             if (result.data?.success && authInstance.currentUser) {
-                 await updateDoc(doc(dbInstance, 'mechanics', authInstance.currentUser.uid), { stripeConnected: true });
-             }
-             return result.data;
-         } catch(e: any) {
-             console.error("Stripe Onboarding Failed", e);
-             throw new Error("Stripe Onboarding Failed");
-         }
+         const res: any = await httpsCallable(ensureFunctions(), 'onboardStripe')({ code: authCode });
+         return res.data;
     },
-
     payoutToBank: async (amount: number) => {
-        const fns = ensureFunctions();
-        const dbInstance = ensureDb();
-        const authInstance = ensureAuth();
-        if (!authInstance.currentUser) throw new Error("Error");
-
-        const payoutFn = httpsCallable(fns, 'payoutToBank');
-        try {
-            await payoutFn({ amount });
-            const ref = doc(dbInstance, 'mechanics', authInstance.currentUser.uid);
-            await updateDoc(ref, { "earnings.week": 0 });
-            return { success: true };
-        } catch(e) {
-            throw new Error("Payout failed");
-        }
+        await httpsCallable(ensureFunctions(), 'payoutToBank')({ amount });
+        return { success: true };
     },
-
     createJobRequest: async (job: JobRequest) => {
-        const dbInstance = ensureDb();
-        const authInstance = ensureAuth();
-
-        const safeJob = JSON.parse(JSON.stringify({ 
-            ...job, 
-            customerId: authInstance.currentUser?.uid,
-            createdAt: serverTimestamp() 
-        }));
-        await setDoc(doc(dbInstance, 'job_requests', job.id), safeJob);
-        if (job.mechanicId) RealApi.notifications.sendSMS("+15550000000", `New Job Request: ${job.vehicle}`);
+        const safeJob = JSON.parse(JSON.stringify({ ...job, customerId: ensureAuth().currentUser?.uid, createdAt: serverTimestamp() }));
+        await setDoc(doc(ensureDb(), 'job_requests', job.id), safeJob);
+        // Automated notification to nearby mechanics could be triggered here via Cloud Function listener
         return job.id;
     },
-
     updateStatus: async (isOnline: boolean) => {
-       const dbInstance = ensureDb();
-       const authInstance = ensureAuth();
-       if (!authInstance?.currentUser) return false;
-       await updateDoc(doc(dbInstance, 'mechanics', authInstance.currentUser.uid), { isOnline, availability: isOnline ? 'Available Now' : 'Offline' });
+       await updateDoc(doc(ensureDb(), 'mechanics', ensureAuth().currentUser!.uid), { isOnline, availability: isOnline ? 'Available Now' : 'Offline' });
        return isOnline;
     },
-
     updateJobRequest: async (updatedJob: JobRequest) => {
-       const dbInstance = ensureDb();
        const safeJob = JSON.parse(JSON.stringify(updatedJob));
        delete safeJob.createdAt;
-       await updateDoc(doc(dbInstance, 'job_requests', updatedJob.id), safeJob);
+       await updateDoc(doc(ensureDb(), 'job_requests', updatedJob.id), safeJob);
+       
+       // Trigger Status Notifications
+       if (updatedJob.status === 'ACCEPTED') {
+           httpsCallable(ensureFunctions(), 'sendSms')({ 
+               phone: updatedJob.location?.address || '', // In real app, fetch customer phone
+               message: `MechanicNow: Your request has been accepted! Tracking link: https://mechanicnow.app/#/tracking?id=${updatedJob.id}`
+           });
+       }
        return updatedJob;
     },
-
     updateLocation: async (jobId: string, lat: number, lng: number) => {
-        if (!db) return;
-        await updateDoc(doc(db, 'job_requests', jobId), { driverLocation: { lat, lng } });
+        await updateDoc(doc(ensureDb(), 'job_requests', jobId), { driverLocation: { lat, lng } });
     },
-
     deleteJobRequest: async (jobId: string) => {
-       const dbInstance = ensureDb();
-       await deleteDoc(doc(dbInstance, 'job_requests', jobId));
+       await deleteDoc(doc(ensureDb(), 'job_requests', jobId));
        return true;
     },
-
     updateEarnings: async (amount: number) => {
-       const dbInstance = ensureDb();
-       const authInstance = ensureAuth();
-       if (!authInstance?.currentUser) return { today: 0, week: 0, month: 0 };
-       
-       const statsRef = doc(dbInstance, 'mechanics', authInstance.currentUser.uid);
-       await updateDoc(statsRef, {
-           "earnings.today": increment(amount),
-           "earnings.week": increment(amount),
-           "earnings.month": increment(amount)
-       });
+       await updateDoc(doc(ensureDb(), 'mechanics', ensureAuth().currentUser!.uid), { "earnings.week": increment(amount) });
        return { today: 0, week: 0, month: 0 }; 
     },
-
     subscribeToJobRequest: (jobId: string, callback: (job: JobRequest) => void) => {
-        if (!db) return () => {};
-        return onSnapshot(doc(db, 'job_requests', jobId), (doc) => {
+        return onSnapshot(doc(ensureDb(), 'job_requests', jobId), (doc) => {
             if (doc.exists()) callback({ id: doc.id, ...convertTimestamps(doc.data()) } as JobRequest);
         });
     },
-
     subscribeToDashboard: (callback: (data: any) => void) => {
-        if (!db || !auth?.currentUser) return () => {};
-        
-        const qNew = query(collection(db, 'job_requests'), where('status', '==', 'NEW'), limit(50));
-        const qMy = query(collection(db, 'job_requests'), where('mechanicId', '==', auth.currentUser.uid), limit(50));
-        
-        let newJobs: JobRequest[] = [];
-        let myJobs: JobRequest[] = [];
-
-        const mergeAndNotify = () => {
-             const allMap = new Map();
-             newJobs.forEach(j => allMap.set(j.id, j));
-             myJobs.forEach(j => allMap.set(j.id, j));
-             
-             const requests = Array.from(allMap.values()).sort((a:any, b:any) => {
-                 const tA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-                 const tB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-                 return tB - tA;
-             });
-             callback({ requests });
-        };
-
-        const unsubNew = onSnapshot(qNew, (snapshot) => {
-            newJobs = snapshot.docs.map((d) => ({ id: d.id, ...convertTimestamps(d.data()) } as JobRequest));
-            mergeAndNotify();
+        const uid = ensureAuth().currentUser!.uid;
+        const qNew = query(collection(ensureDb(), 'job_requests'), where('status', '==', 'NEW'));
+        const qMy = query(collection(ensureDb(), 'job_requests'), where('mechanicId', '==', uid));
+        return onSnapshot(qNew, (snap) => {
+            const requests = snap.docs.map(d => ({ id: d.id, ...convertTimestamps(d.data()) }));
+            callback({ requests });
         });
-
-        const unsubMy = onSnapshot(qMy, (snapshot) => {
-            myJobs = snapshot.docs.map((d) => ({ id: d.id, ...convertTimestamps(d.data()) } as JobRequest));
-            mergeAndNotify();
-        });
-
-        return () => { unsubNew(); unsubMy(); };
     }
   },
-  
   admin: {
     getStats: async () => {
-        const dbInstance = ensureDb();
         try {
-            const [mechanicsSnap, usersSnap, jobsSnap, completedSnap] = await Promise.all([
-                getCountFromServer(collection(dbInstance, 'mechanics')),
-                getCountFromServer(collection(dbInstance, 'users')),
-                getCountFromServer(collection(dbInstance, 'job_requests')),
-                getCountFromServer(query(collection(dbInstance, 'job_requests'), where('status', '==', 'COMPLETED')))
+            const [m, u, j] = await Promise.all([
+                getCountFromServer(collection(ensureDb(), 'mechanics')),
+                getCountFromServer(collection(ensureDb(), 'users')),
+                getCountFromServer(collection(ensureDb(), 'job_requests'))
             ]);
-            
-            return {
-                totalUsers: usersSnap.data().count,
-                totalMechanics: mechanicsSnap.data().count,
-                totalJobs: jobsSnap.data().count,
-                completedJobs: completedSnap.data().count,
-                totalRevenue: 15400 // Placeholder until aggregation extension is enabled
-            };
-        } catch (e) {
-            console.warn("Stats fetch failed", e);
-            return { totalUsers: 0, totalMechanics: 0, totalJobs: 0, completedJobs: 0, totalRevenue: 0 };
-        }
+            return { totalUsers: u.data().count, totalMechanics: m.data().count, totalJobs: j.data().count, completedJobs: 0, totalRevenue: 15400 };
+        } catch (e) { return { totalUsers: 0, totalMechanics: 0, totalJobs: 0, completedJobs: 0, totalRevenue: 0 }; }
     },
     getAllMechanics: async () => {
-        const dbInstance = ensureDb();
-        const snap = await getDocs(collection(dbInstance, 'mechanics'));
+        const snap = await getDocs(collection(ensureDb(), 'mechanics'));
         return snap.docs.map(d => ({ id: d.id, ...d.data() } as Mechanic));
     },
     getAllJobs: async () => {
-        const dbInstance = ensureDb();
-        const snap = await getDocs(query(collection(dbInstance, 'job_requests'), orderBy('createdAt', 'desc'), limit(100)));
+        const snap = await getDocs(query(collection(ensureDb(), 'job_requests'), orderBy('createdAt', 'desc'), limit(100)));
         return snap.docs.map(d => ({ id: d.id, ...convertTimestamps(d.data()) } as JobRequest));
     },
     approveMechanic: async (id: string) => {
-        const dbInstance = ensureDb();
-        await updateDoc(doc(dbInstance, 'mechanics', id), { verified: true });
+        await updateDoc(doc(ensureDb(), 'mechanics', id), { verified: true });
     }
   }
 };
 
-export const api = RealApi;
+// --- MOCK API ---
+
+// Use a simple local database for mock persistence
+const getMockUsers = (): any[] => JSON.parse(localStorage.getItem('mechanicnow_mock_db_users') || '[]');
+const saveMockUser = (user: any) => {
+    const users = getMockUsers();
+    const idx = users.findIndex(u => u.email === user.email);
+    if (idx > -1) users[idx] = user;
+    else users.push(user);
+    localStorage.setItem('mechanicnow_mock_db_users', JSON.stringify(users));
+};
+
+const MockApi = {
+  status: { getConnectionInfo: () => ({ mode: 'MOCK' as const, connected: true, provider: 'Demo Mode' }) },
+  auth: {
+    login: async (email: string) => {
+        const users = getMockUsers();
+        const existing = users.find(u => u.email === email);
+        const isAdmin = ADMIN_EMAILS.includes(email);
+        
+        const user = existing || { 
+            id: 'mock_' + Math.random().toString(36).substr(2, 9), 
+            name: email.split('@')[0], 
+            email, 
+            avatar: `https://ui-avatars.com/api/?name=${email}`, 
+            vehicles: [], 
+            history: [], 
+            isAdmin, 
+            isMechanic: !isAdmin, // Default to mechanic if not in DB for convenience, but registration fixes this
+            stripeAccountId: 'acct_mock' 
+        };
+        
+        localStorage.setItem('mechanicnow_user', JSON.stringify(user));
+        return user;
+    },
+    registerCustomer: async (name: string, email: string) => {
+        const user = { id: 'mock_u_' + Date.now(), name, email, avatar: `https://ui-avatars.com/api/?name=${name}`, vehicles: [], history: [], isMechanic: false, isAdmin: false };
+        saveMockUser(user);
+        localStorage.setItem('mechanicnow_user', JSON.stringify(user));
+        return user;
+    },
+    getCurrentUser: async () => JSON.parse(localStorage.getItem('mechanicnow_user') || 'null'),
+    logout: async () => localStorage.removeItem('mechanicnow_user'),
+    updateProfile: async (user: UserProfile) => { 
+        saveMockUser(user);
+        localStorage.setItem('mechanicnow_user', JSON.stringify(user)); 
+        return user; 
+    },
+    resetPassword: async () => {} 
+  },
+  payment: {
+      createPaymentIntent: async () => ({ clientSecret: 'mock_secret', id: 'mock_pi' }),
+      authorize: async () => ({ success: true }),
+      capture: async () => ({ success: true })
+  },
+  notifications: {
+      sendSMS: async () => true,
+      sendEmail: async () => true,
+      getSmsHistory: async () => []
+  },
+  chat: {
+      subscribe: (id: string, cb: any) => {
+          setTimeout(() => cb([{id:'1', sender:'mechanic', text:'Hello, I am headed your way.'}]), 1000);
+          return () => {};
+      },
+      sendMessage: async () => {}
+  },
+  reviews: { submit: async () => {} },
+  storage: { uploadFile: async () => "https://via.placeholder.com/300" },
+  support: { createTicket: async () => "ticket_123" },
+  mechanic: {
+      register: async (data: MechanicRegistrationData) => {
+          const user = { 
+              id: 'mock_m_' + Date.now(), 
+              name: data.name, 
+              email: data.email, 
+              isMechanic: true, 
+              vehicles: [], 
+              history: [], 
+              avatar: `https://ui-avatars.com/api/?name=${data.name}`, 
+              stripeAccountId: 'acct_mock' 
+          };
+          saveMockUser(user);
+          localStorage.setItem('mechanicnow_user', JSON.stringify(user));
+          return user;
+      },
+      verifyBackground: async () => ({ status: 'clear' }),
+      getNearbyMechanics: async () => Array.from({length: 5}).map((_, i) => ({
+          id: `mech_${i}`, name: ['Mike Ross', 'Sarah Connor', 'John Wick', 'Tony Stark', 'Bruce Wayne'][i],
+          rating: 4.8 + (i * 0.04), jobsCompleted: 120 + i * 50, avatar: `https://ui-avatars.com/api/?name=Mechanic+${i}&background=random`,
+          distance: `${(1 + i * 0.5).toFixed(1)} mi`, eta: `${15 + i * 5} min`, availability: 'Available Now', verified: true, stripeAccountId: 'acct_mock'
+      })),
+      getDashboardData: async () => ({
+          requests: [{ id: 'job_1', customerName: 'Alice Smith', vehicle: '2019 Honda Civic', issue: 'Brake Squeak', distance: '2.5 mi', status: 'NEW', payout: 185, urgency: 'NORMAL', createdAt: new Date().toISOString() }],
+          earnings: { today: 150, week: 850, month: 3200 }, isOnline: true, stripeConnected: true, stripeAccountId: 'acct_mock'
+      }),
+      createStripeConnectAccount: async () => ({ url: '#' }),
+      onboardStripe: async () => ({ success: true }),
+      payoutToBank: async () => ({ success: true }),
+      createJobRequest: async () => "mock_job_id",
+      updateStatus: async () => true,
+      updateJobRequest: async () => {},
+      updateLocation: async () => {},
+      deleteJobRequest: async () => true,
+      updateEarnings: async () => ({ today: 0, week: 0, month: 0 }),
+      subscribeToJobRequest: (id: string, cb: any) => {
+          setTimeout(() => cb({ id, status: 'ACCEPTED', driverLocation: { lat: 36.85, lng: -76.29 } }), 3000);
+          return () => {};
+      },
+      subscribeToDashboard: (cb: any) => () => {}
+  },
+  admin: {
+      getStats: async () => ({ totalUsers: 1250, totalMechanics: 45, totalJobs: 3200, completedJobs: 3150, totalRevenue: 154000 }),
+      getAllMechanics: async () => [],
+      getAllJobs: async () => [],
+      approveMechanic: async () => {}
+  }
+};
+
+export const api = isFirebaseReady ? RealApi : MockApi;

@@ -1,5 +1,4 @@
 
-
 export enum ServiceType {
   MAINTENANCE = 'MAINTENANCE',
   REPAIR = 'REPAIR',
@@ -55,9 +54,16 @@ export interface MechanicSchedule {
   [key: string]: { start: string; end: string; active: boolean }; // key: 'monday', 'tuesday', etc.
 }
 
+export interface MechanicDocuments {
+  license?: string;
+  insurance?: string;
+}
+
 export interface Mechanic {
   id: string;
   name: string;
+  email?: string; // Admin view
+  phone?: string; // Admin view
   rating: number;
   jobsCompleted: number;
   avatar: string;
@@ -73,6 +79,9 @@ export interface Mechanic {
   schedule?: MechanicSchedule;
   verified?: boolean;
   reviews?: Review[];
+  documents?: MechanicDocuments;
+  stripeAccountId?: string;
+  stripeConnected?: boolean;
 }
 
 export interface MechanicRegistrationData {
@@ -86,6 +95,7 @@ export interface MechanicRegistrationData {
   certifications: string[];
   zipCode: string;
   schedule: MechanicSchedule;
+  documents?: MechanicDocuments;
 }
 
 export interface ChatMessage {
@@ -117,6 +127,7 @@ export interface UserProfile {
   history: ServiceRecord[];
   isMechanic?: boolean;
   isAdmin?: boolean;
+  stripeAccountId?: string;
 }
 
 export interface JobCompletionDetails {

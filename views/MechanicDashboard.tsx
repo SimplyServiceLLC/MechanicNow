@@ -1,7 +1,6 @@
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useApp } from '../App';
-import { MapPin, DollarSign, Clock, User, ArrowRight, Shield, Settings, Power, Navigation, Phone, Bell, MessageSquare, X, Send, CheckCircle, PenTool, Sparkles, Loader2, FileText, Wrench, Mic, TrendingUp, RefreshCw, Calendar, ChevronRight, Timer, RotateCcw, Package, Wallet, CreditCard, Banknote, Smartphone, Filter, Map as MapIcon, Link2, Save, ClipboardList, Lock, Briefcase, ChevronUp, ShieldCheck, LogOut } from 'lucide-react';
+import { MapPin, DollarSign, Clock, User, ArrowRight, Shield, Settings, Power, Navigation, Phone, Bell, MessageSquare, X, Send, CheckCircle, PenTool, Sparkles, Loader2, FileText, Wrench, Mic, TrendingUp, RefreshCw, Calendar, ChevronRight, Timer, RotateCcw, Package, Wallet, CreditCard, Banknote, Smartphone, Filter, Map as MapIcon, Link2, Save, ClipboardList, Lock, Briefcase, ChevronUp, ShieldCheck, LogOut, ExternalLink, Landmark, Mail } from 'lucide-react';
 import { useNavigate, Navigate } from '../App';
 import { JobRequest, JobCompletionDetails, AiDiagnosisResult, MechanicSchedule } from '../types';
 import { diagnoseCarIssue } from '../services/geminiService';
@@ -28,7 +27,7 @@ const DashboardMap = ({ requests, activeId, onSelect, mechanicLocation }: { requ
             zoomAnimation: true
         }).setView([36.8508, -76.2859], 12); 
 
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{yr}.png', {
             maxZoom: 19,
             attribution: ''
         }).addTo(map);
@@ -319,7 +318,7 @@ const CompletionModal = ({ job, onClose, onComplete }: { job: JobRequest, onClos
 
     return (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-            <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl p-6 animate-scale-up">
+            <div className="bg-white w-full max-lg rounded-2xl shadow-2xl p-6 animate-scale-up">
                 <div className="flex justify-between items-center mb-6">
                     <h2 className="text-2xl font-bold text-slate-900">Payment Summary</h2>
                     <button onClick={() => setStep(1)} className="text-sm text-slate-500 font-bold hover:text-slate-800">Back</button>
@@ -390,20 +389,25 @@ const CompletionModal = ({ job, onClose, onComplete }: { job: JobRequest, onClos
 export const MechanicDashboard: React.FC = () => {
   const { user, notify, isLoading: appLoading, logout } = useApp();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<'requests' | 'map' | 'earnings' | 'history' | 'profile'>('requests');
+  const [activeTab, setActiveTab] = useState<'requests' | 'map' | 'earnings' | 'payouts' | 'history' | 'profile'>('requests');
   const [isOnline, setIsOnline] = useState(false);
   const [requests, setRequests] = useState<JobRequest[]>([]);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [stats, setStats] = useState({ 
       earnings: { today: 0, week: 0, month: 0 },
       isOnline: false,
-      stripeConnected: false
+      stripeConnected: false,
+      stripeAccountId: ''
   });
 
   const [isLoading, setIsLoading] = useState(true);
   const [location, setLocation] = useState<{lat: number, lng: number} | null>(null);
   const [showChat, setShowChat] = useState(false);
   const [showComplete, setShowComplete] = useState(false);
+
+  // Stripe Payout Setup State
+  const [isSettingUpStripe, setIsSettingUpStripe] = useState(false);
+  const [stripeForm, setStripeForm] = useState({ email: user?.email || '', ssnLast4: '' });
   
   // Handle Stripe OAuth Return
   useEffect(() => {
@@ -445,7 +449,8 @@ export const MechanicDashboard: React.FC = () => {
           setStats({
               earnings: data.earnings,
               isOnline: data.isOnline,
-              stripeConnected: data.stripeConnected
+              stripeConnected: data.stripeConnected,
+              stripeAccountId: data.stripeAccountId || ''
           });
           setIsOnline(data.isOnline);
       } catch (e) { console.error(e); } 
@@ -514,10 +519,15 @@ export const MechanicDashboard: React.FC = () => {
   };
 
   const handleStripeConnect = async () => {
+      if (!stripeForm.ssnLast4 || stripeForm.ssnLast4.length < 4) {
+          notify("Verification Required", "Please provide the last 4 digits of your SSN to initiate onboarding.");
+          return;
+      }
       try {
-          const res = await api.mechanic.createStripeConnectAccount();
+          // We pass email to ensure consistency with verified user email
+          const res = await api.mechanic.createStripeConnectAccount(stripeForm.email);
           if (res.url) window.location.href = res.url;
-      } catch(e) { notify("Error", "Could not initiate Stripe Connect."); }
+      } catch(e) { notify("Error", "Could not initiate Stripe Connect. Please check your internet connection."); }
   };
 
   const handleCashOut = async () => {
@@ -584,7 +594,7 @@ export const MechanicDashboard: React.FC = () => {
                 </div>
 
                 {/* Active Job Card */}
-                {activeJob && activeTab !== 'earnings' && activeTab !== 'profile' && activeTab !== 'history' && (
+                {activeJob && !['earnings', 'profile', 'history', 'payouts'].includes(activeTab) && (
                      <div className="bg-white mx-4 mt-2 mb-4 rounded-2xl shadow-xl border border-blue-100 overflow-hidden animate-slide-up relative">
                         <div className="bg-blue-600 h-1.5 w-full"></div>
                         <div className="p-4">
@@ -686,33 +696,28 @@ export const MechanicDashboard: React.FC = () => {
                         <div className="space-y-6 pt-2">
                             <h2 className="font-bold text-slate-900 text-lg">Financials</h2>
                             
-                            {!stats.stripeConnected ? (
-                                <div className="bg-gradient-to-br from-blue-600 to-indigo-700 text-white p-6 rounded-2xl shadow-xl relative overflow-hidden">
-                                    <div className="relative z-10">
-                                        <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center mb-4 backdrop-blur-sm">
-                                            <Banknote size={24} />
-                                        </div>
-                                        <h3 className="font-bold text-xl mb-2">Activate Payouts</h3>
-                                        <p className="text-blue-100 text-sm mb-6 leading-relaxed">Link your bank account via Stripe Connect to receive daily payouts securely.</p>
-                                        <button onClick={handleStripeConnect} className="w-full bg-white text-blue-600 py-3 rounded-xl font-bold hover:bg-blue-50 transition-colors shadow-lg">
-                                            Connect Stripe Account
-                                        </button>
-                                    </div>
-                                    <div className="absolute top-0 right-0 w-48 h-48 bg-white/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
-                                </div>
-                            ) : (
-                                <div className="bg-slate-900 text-white p-6 rounded-2xl shadow-xl">
-                                    <p className="text-slate-400 text-sm font-medium mb-1 flex items-center gap-2"><Wallet size={14}/> Balance Available</p>
-                                    <h3 className="text-4xl font-bold mb-6 tracking-tight">${stats.earnings.week.toFixed(2)}</h3>
+                            <div className="bg-slate-900 text-white p-6 rounded-2xl shadow-xl relative overflow-hidden">
+                                <p className="text-slate-400 text-sm font-medium mb-1 flex items-center gap-2"><Wallet size={14}/> Total Unpaid Balance</p>
+                                <h3 className="text-4xl font-bold mb-6 tracking-tight">${stats.earnings.week.toFixed(2)}</h3>
+                                
+                                {stats.stripeConnected ? (
                                     <button 
                                         onClick={handleCashOut}
                                         disabled={stats.earnings.week <= 0}
                                         className="w-full bg-green-500 text-white py-3 rounded-xl font-bold hover:bg-green-400 disabled:opacity-50 disabled:bg-slate-700 transition-colors shadow-lg shadow-green-900/20"
                                     >
-                                        Cash Out Now
+                                        Withdraw to Bank
                                     </button>
-                                </div>
-                            )}
+                                ) : (
+                                    <button 
+                                        onClick={() => setActiveTab('payouts')}
+                                        className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-500 transition-colors"
+                                    >
+                                        Setup Payouts to Withdraw
+                                    </button>
+                                )}
+                                <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/2 blur-2xl"></div>
+                            </div>
 
                             {/* Simulated Chart */}
                             <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
@@ -731,6 +736,128 @@ export const MechanicDashboard: React.FC = () => {
                                     ))}
                                 </div>
                             </div>
+                        </div>
+                    )}
+
+                    {activeTab === 'payouts' && (
+                        <div className="space-y-6 pt-2 animate-fade-in">
+                            <h2 className="font-bold text-slate-900 text-lg">Payout Settings</h2>
+                            
+                            {stats.stripeConnected ? (
+                                <div className="space-y-4">
+                                    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                                        <div className="flex items-center gap-3 mb-4">
+                                            <div className="w-12 h-12 bg-green-50 text-green-600 rounded-full flex items-center justify-center">
+                                                <CheckCircle size={24} />
+                                            </div>
+                                            <div>
+                                                <h3 className="font-bold text-slate-900">Stripe Account Linked</h3>
+                                                <p className="text-xs text-slate-500">Your funds are being deposited daily.</p>
+                                            </div>
+                                        </div>
+                                        <div className="space-y-3 pt-4 border-t border-slate-100">
+                                            <div className="flex justify-between text-sm">
+                                                <span className="text-slate-500">Account Type</span>
+                                                <span className="font-bold text-slate-700">Stripe Express</span>
+                                            </div>
+                                            <div className="flex justify-between text-sm">
+                                                <span className="text-slate-500">Account ID</span>
+                                                <span className="font-mono text-[10px] bg-slate-100 px-1.5 py-0.5 rounded">{stats.stripeAccountId || 'acct_...'}</span>
+                                            </div>
+                                            <div className="flex justify-between text-sm">
+                                                <span className="text-slate-500">Payout Status</span>
+                                                <span className="text-green-600 font-bold">Enabled</span>
+                                            </div>
+                                        </div>
+                                        <button 
+                                            onClick={handleStripeConnect}
+                                            className="w-full mt-6 py-3 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200 transition-colors flex items-center justify-center gap-2"
+                                        >
+                                            View Stripe Dashboard <ExternalLink size={16}/>
+                                        </button>
+                                    </div>
+                                    
+                                    <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
+                                        <h4 className="text-sm font-bold text-blue-900 flex items-center gap-2 mb-1"><Landmark size={14}/> Payout Schedule</h4>
+                                        <p className="text-xs text-blue-700 leading-relaxed">Funds from card payments are held for 24-48 hours before being automatically transferred to your linked bank account.</p>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="space-y-6">
+                                    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                                        <div className="text-center mb-6">
+                                            <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                                                <Link2 size={32} />
+                                            </div>
+                                            <h3 className="text-xl font-bold text-slate-900">Get Paid Securely</h3>
+                                            <p className="text-slate-500 text-sm mt-2">Connect your bank account to receive direct deposits for every job you complete.</p>
+                                        </div>
+
+                                        {!isSettingUpStripe ? (
+                                            <button 
+                                                onClick={() => setIsSettingUpStripe(true)}
+                                                className="w-full py-4 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-500 shadow-lg shadow-blue-200 transition-all"
+                                            >
+                                                Start Payout Setup
+                                            </button>
+                                        ) : (
+                                            <div className="space-y-4 animate-fade-in">
+                                                <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-4">
+                                                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Identity Verification</p>
+                                                    <div className="bg-white p-3 rounded-lg border border-slate-100 flex items-center gap-3">
+                                                        <Mail className="text-slate-400" size={16} />
+                                                        <div className="flex-1">
+                                                            <p className="text-[10px] text-slate-400 font-bold uppercase">Verified Email</p>
+                                                            <p className="text-sm font-medium text-slate-700">{stripeForm.email}</p>
+                                                        </div>
+                                                        <CheckCircle size={14} className="text-green-500" />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-xs font-bold text-slate-700 mb-1 ml-1">SSN (Last 4 Digits) <span className="text-red-500">*</span></label>
+                                                        <div className="relative">
+                                                            <Lock className="absolute left-3 top-3 text-slate-400" size={16} />
+                                                            <input 
+                                                                type="password"
+                                                                maxLength={4}
+                                                                placeholder="XXXX"
+                                                                className="w-full pl-10 p-3 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                                                value={stripeForm.ssnLast4}
+                                                                onChange={e => setStripeForm({...stripeForm, ssnLast4: e.target.value.replace(/\D/g, '')})}
+                                                            />
+                                                        </div>
+                                                        <p className="text-[10px] text-slate-400 mt-2 px-1 leading-relaxed">
+                                                            We partner with <strong>Stripe Connect</strong> to handle your earnings. Your SSN is used for identity verification and is never stored on our servers.
+                                                        </p>
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex gap-3">
+                                                    <button 
+                                                        onClick={() => setIsSettingUpStripe(false)}
+                                                        className="flex-1 py-4 text-slate-500 font-bold hover:text-slate-800"
+                                                    >
+                                                        Cancel
+                                                    </button>
+                                                    <button 
+                                                        onClick={handleStripeConnect}
+                                                        disabled={stripeForm.ssnLast4.length < 4}
+                                                        className="flex-[2] py-4 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-500 shadow-lg shadow-blue-200 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                                                    >
+                                                        Link Bank with Stripe <ChevronRight size={18}/>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                    
+                                    <div className="flex items-start gap-3 px-4">
+                                        <ShieldCheck className="text-blue-500 shrink-0 mt-0.5" size={16} />
+                                        <p className="text-xs text-slate-500 leading-relaxed">
+                                            MechanicNow uses industry-standard encryption. Your financial details are handled according to banking security protocols.
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     )}
 
@@ -784,7 +911,6 @@ export const MechanicDashboard: React.FC = () => {
                                 </div>
                             </div>
 
-                            {/* Mode Switching - Prominent Button */}
                             <button 
                                 onClick={() => navigate('/')}
                                 className="w-full py-4 bg-slate-900 text-white font-bold rounded-xl hover:bg-slate-800 transition-colors shadow-lg flex items-center justify-center gap-2"
@@ -793,15 +919,15 @@ export const MechanicDashboard: React.FC = () => {
                             </button>
 
                             <div className="space-y-3">
-                                <button className="w-full bg-white p-4 rounded-xl border border-slate-200 flex items-center justify-between hover:bg-slate-50 transition-colors">
+                                <button onClick={() => setActiveTab('payouts')} className="w-full bg-white p-4 rounded-xl border border-slate-200 flex items-center justify-between hover:bg-slate-50 transition-colors">
                                     <div className="flex items-center gap-3 font-bold text-slate-700">
-                                        <Settings size={20} className="text-slate-400"/> Account Settings
+                                        <CreditCard size={20} className="text-slate-400"/> Payout Settings
                                     </div>
                                     <ChevronRight size={16} className="text-slate-400"/>
                                 </button>
                                 <button className="w-full bg-white p-4 rounded-xl border border-slate-200 flex items-center justify-between hover:bg-slate-50 transition-colors">
                                     <div className="flex items-center gap-3 font-bold text-slate-700">
-                                        <FileText size={20} className="text-slate-400"/> Insurance Documents
+                                        <Settings size={20} className="text-slate-400"/> Account Settings
                                     </div>
                                     <ChevronRight size={16} className="text-slate-400"/>
                                 </button>
@@ -820,20 +946,20 @@ export const MechanicDashboard: React.FC = () => {
         </div>
 
         {/* Bottom Tab Bar (Mobile Only) */}
-        <div className="md:hidden bg-white border-t border-slate-200 px-6 py-2 flex justify-between items-center z-30 pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
-            <button onClick={() => setActiveTab('requests')} className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all ${activeTab === 'requests' ? 'text-blue-600 bg-blue-50' : 'text-slate-400'}`}>
+        <div className="md:hidden bg-white border-t border-slate-200 px-2 py-2 flex justify-between items-center z-30 pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+            <button onClick={() => setActiveTab('requests')} className={`flex flex-col items-center gap-1 p-2 flex-1 rounded-xl transition-all ${activeTab === 'requests' ? 'text-blue-600 bg-blue-50' : 'text-slate-400'}`}>
                 <ClipboardList size={24} strokeWidth={activeTab === 'requests' ? 2.5 : 2} />
                 <span className="text-[10px] font-bold">Jobs</span>
             </button>
-            <button onClick={() => setActiveTab('map')} className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all ${activeTab === 'map' ? 'text-blue-600 bg-blue-50' : 'text-slate-400'}`}>
-                <MapIcon size={24} strokeWidth={activeTab === 'map' ? 2.5 : 2} />
-                <span className="text-[10px] font-bold">Map</span>
-            </button>
-             <button onClick={() => setActiveTab('earnings')} className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all ${activeTab === 'earnings' ? 'text-blue-600 bg-blue-50' : 'text-slate-400'}`}>
+             <button onClick={() => setActiveTab('earnings')} className={`flex flex-col items-center gap-1 p-2 flex-1 rounded-xl transition-all ${activeTab === 'earnings' ? 'text-blue-600 bg-blue-50' : 'text-slate-400'}`}>
                 <Wallet size={24} strokeWidth={activeTab === 'earnings' ? 2.5 : 2} />
                 <span className="text-[10px] font-bold">Earn</span>
             </button>
-            <button onClick={() => setActiveTab('profile')} className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all ${activeTab === 'profile' ? 'text-blue-600 bg-blue-50' : 'text-slate-400'}`}>
+            <button onClick={() => setActiveTab('payouts')} className={`flex flex-col items-center gap-1 p-2 flex-1 rounded-xl transition-all ${activeTab === 'payouts' ? 'text-blue-600 bg-blue-50' : 'text-slate-400'}`}>
+                <Landmark size={24} strokeWidth={activeTab === 'payouts' ? 2.5 : 2} />
+                <span className="text-[10px] font-bold">Payouts</span>
+            </button>
+            <button onClick={() => setActiveTab('profile')} className={`flex flex-col items-center gap-1 p-2 flex-1 rounded-xl transition-all ${activeTab === 'profile' ? 'text-blue-600 bg-blue-50' : 'text-slate-400'}`}>
                 <User size={24} strokeWidth={activeTab === 'profile' ? 2.5 : 2} />
                 <span className="text-[10px] font-bold">Me</span>
             </button>

@@ -358,3 +358,15 @@ export const Profile: React.FC = () => {
                             </div>
                         ))}
                     </div>
+                </div>
+            </div>
+        </div>
+
+        {/* Modal for Review */}
+        {reviewJob && (
+            <ReviewModal job={reviewJob} onClose={() => setReviewJob(null)} />
+        )}
+      </div>
+    </div>
+  );
+};

@@ -1,7 +1,8 @@
+
 import React, { useState } from 'react';
 import { useNavigate } from '../App';
 import { useApp } from '../App';
-import { Wrench, Lock, Mail, ArrowLeft, CheckCircle } from 'lucide-react';
+import { Wrench, Lock, Mail, ArrowLeft, CheckCircle, User, AlertTriangle } from 'lucide-react';
 import { api } from '../services/api';
 
 export const Login: React.FC = () => {
@@ -10,32 +11,53 @@ export const Login: React.FC = () => {
   const [password, setPassword] = useState('');
   const [isResetting, setIsResetting] = useState(false);
   const [resetSent, setResetSent] = useState(false);
-  const { login, notify } = useApp();
+  const [isSignUp, setIsSignUp] = useState(false);
+  
+  const { login, register, notify } = useApp();
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (email && password) {
-      await performLogin(name || email.split('@')[0], email, password);
+    if (!email || !password) return;
+    
+    if (isSignUp) {
+        if (!name) {
+            notify('Missing Info', 'Please enter your full name.');
+            return;
+        }
+        await performRegister(name, email, password);
+    } else {
+        await performLogin(email, password);
     }
   };
 
-  const performLogin = async (uName: string, uEmail: string, uPass: string) => {
+  const performLogin = async (uEmail: string, uPass: string) => {
       try {
-        const user = await login(uName, uEmail, uPass);
-        
-        // Route based on User Profile Role
-        if (user) {
-            if (user.isAdmin) {
-                navigate('/admin');
-            } else if (user.isMechanic) {
-                navigate('/mechanic-dashboard');
-            } else {
-                navigate('/profile');
-            }
-        }
+        const user = await login(uEmail, uPass);
+        routeUser(user);
       } catch (error) {
-          // Error notification handled by context
+          // Context handles notification, but we can log specifically here if needed
+      }
+  };
+
+  const performRegister = async (uName: string, uEmail: string, uPass: string) => {
+      try {
+          const user = await register(uName, uEmail, uPass);
+          routeUser(user);
+      } catch (error) {
+          // Context handles notification
+      }
+  };
+
+  const routeUser = (user: any) => {
+      if (user) {
+        if (user.isAdmin) {
+            navigate('/admin');
+        } else if (user.isMechanic) {
+            navigate('/mechanic-dashboard');
+        } else {
+            navigate('/profile');
+        }
       }
   };
 
@@ -53,6 +75,9 @@ export const Login: React.FC = () => {
       }
   };
 
+  // Check connection mode for UI hint
+  const connection = api.status.getConnectionInfo();
+
   return (
     <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4 relative overflow-hidden">
       {/* Background Decor */}
@@ -62,6 +87,13 @@ export const Login: React.FC = () => {
       </div>
 
       <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden z-10 animate-fade-in">
+        
+        {connection.mode === 'MOCK' && (
+            <div className="bg-amber-100 text-amber-800 px-4 py-2 text-xs font-bold text-center flex items-center justify-center gap-2">
+                <AlertTriangle size={14} /> Demo Mode Active
+            </div>
+        )}
+
         <div className="p-8">
             <button onClick={() => navigate('/')} className="mb-6 text-slate-400 hover:text-slate-600 flex items-center gap-2 text-sm font-bold transition-colors">
                 <ArrowLeft size={16} /> Back to Home
@@ -71,12 +103,29 @@ export const Login: React.FC = () => {
                 <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-blue-200">
                     <Wrench className="text-white" size={32} />
                 </div>
-                <h1 className="text-2xl font-bold text-slate-900">Welcome Back</h1>
-                <p className="text-slate-500">Sign in to manage your repairs or jobs.</p>
+                <h1 className="text-2xl font-bold text-slate-900">{isSignUp ? 'Create Account' : 'Welcome Back'}</h1>
+                <p className="text-slate-500">{isSignUp ? 'Join MechanicNow to book repairs.' : 'Sign in to manage your repairs.'}</p>
             </div>
 
             {!isResetting ? (
                 <form onSubmit={handleSubmit} className="space-y-4">
+                    {isSignUp && (
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1 ml-1">Full Name</label>
+                            <div className="relative">
+                                <User className="absolute left-3 top-3.5 text-slate-400" size={18} />
+                                <input 
+                                    type="text" 
+                                    className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all font-medium text-slate-900"
+                                    placeholder="John Doe"
+                                    value={name}
+                                    onChange={(e) => setName(e.target.value)}
+                                    required={isSignUp}
+                                />
+                            </div>
+                        </div>
+                    )}
+
                     <div>
                         <label className="block text-xs font-bold text-slate-500 uppercase mb-1 ml-1">Email Address</label>
                         <div className="relative">
@@ -95,7 +144,7 @@ export const Login: React.FC = () => {
                     <div>
                          <div className="flex justify-between items-center mb-1 ml-1">
                             <label className="block text-xs font-bold text-slate-500 uppercase">Password</label>
-                            <button type="button" onClick={() => setIsResetting(true)} className="text-xs font-bold text-blue-600 hover:underline">Forgot?</button>
+                            {!isSignUp && <button type="button" onClick={() => setIsResetting(true)} className="text-xs font-bold text-blue-600 hover:underline">Forgot?</button>}
                          </div>
                         <div className="relative">
                             <Lock className="absolute left-3 top-3.5 text-slate-400" size={18} />
@@ -114,7 +163,7 @@ export const Login: React.FC = () => {
                         type="submit" 
                         className="w-full bg-slate-900 text-white font-bold py-4 rounded-xl hover:bg-slate-800 transition-all shadow-xl active:scale-95"
                     >
-                        Sign In
+                        {isSignUp ? 'Create Account' : 'Sign In'}
                     </button>
                 </form>
             ) : (
@@ -154,11 +203,11 @@ export const Login: React.FC = () => {
                 </form>
             )}
 
-            <div className="mt-8 text-center">
+            <div className="mt-8 text-center space-y-4">
                 <p className="text-slate-500 text-sm">
-                    Don't have an account? <span onClick={() => navigate('/')} className="text-blue-600 font-bold cursor-pointer hover:underline">Sign up</span>
+                    {isSignUp ? 'Already have an account?' : "Don't have an account?"} <span onClick={() => setIsSignUp(!isSignUp)} className="text-blue-600 font-bold cursor-pointer hover:underline">{isSignUp ? 'Sign In' : 'Sign Up'}</span>
                 </p>
-                <div className="mt-2">
+                <div className="pt-4 border-t border-slate-100">
                     <span onClick={() => navigate('/register-mechanic')} className="text-xs font-bold text-slate-400 uppercase tracking-wide cursor-pointer hover:text-slate-600">
                         Apply as a Mechanic
                     </span>

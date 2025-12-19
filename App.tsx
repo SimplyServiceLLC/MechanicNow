@@ -104,7 +104,8 @@ interface Notification {
 interface AppContextType {
   user: UserProfile | null;
   isLoading: boolean;
-  login: (name: string, email: string, password?: string) => Promise<UserProfile | null>;
+  login: (email: string, password?: string) => Promise<UserProfile | null>;
+  register: (name: string, email: string, password?: string) => Promise<UserProfile | null>;
   logout: () => Promise<void>;
   addVehicle: (v: Vehicle) => Promise<void>;
   updateVehicle: (v: Vehicle) => Promise<void>;
@@ -435,10 +436,10 @@ const App = () => {
     init();
   }, []);
 
-  const login = async (name: string, email: string, password?: string) => {
+  const login = async (email: string, password?: string) => {
     setIsLoading(true);
     try {
-      const newUser = await api.auth.login(name, email, password);
+      const newUser = await api.auth.login(email, password);
       setUser(newUser);
       notify('Welcome Back!', `Signed in as ${newUser.name}`);
       return newUser;
@@ -448,6 +449,22 @@ const App = () => {
       throw e;
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const register = async (name: string, email: string, password?: string) => {
+    setIsLoading(true);
+    try {
+      const newUser = await api.auth.registerCustomer(name, email, password);
+      setUser(newUser);
+      notify('Welcome to MechanicNow!', `Account created for ${newUser.name}`);
+      return newUser;
+    } catch (e: any) {
+        console.error(e);
+        notify('Error', e.message || 'Registration failed');
+        throw e;
+    } finally {
+        setIsLoading(false);
     }
   };
 
@@ -518,7 +535,7 @@ const App = () => {
 
   return (
     <ErrorBoundary>
-      <AppContext.Provider value={{ user, isLoading, login, logout, addVehicle, updateVehicle, removeVehicle, addServiceRecord, notify }}>
+      <AppContext.Provider value={{ user, isLoading, login, register, logout, addVehicle, updateVehicle, removeVehicle, addServiceRecord, notify }}>
         <HashRouter>
           <Layout>
             <Routes>

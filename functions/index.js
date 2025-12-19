@@ -41,15 +41,25 @@ const mailTransport = nodemailer.createTransport({
 exports.createConnectAccount = functions.https.onCall(async (data, context) => {
   if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'User must be logged in.');
   
+  const mechanicId = context.auth.uid;
+  const email = data.email || context.auth.token.email;
+
   // Create an Express account for the mechanic
   const account = await stripe.accounts.create({
     type: 'express',
-    email: data.email,
+    email: email,
     capabilities: {
       card_payments: { requested: true },
       transfers: { requested: true },
     },
+    // Business Profile settings could be pre-filled here if we had more info
   });
+
+  // STORE THE ACCOUNT ID IN THE MECHANIC PROFILE IMMEDIATELY
+  await db.collection('mechanics').doc(mechanicId).set({
+      stripeAccountId: account.id,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
 
   // Create the account link for onboarding
   const accountLink = await stripe.accountLinks.create({
